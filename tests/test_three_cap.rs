@@ -14,7 +14,7 @@ fn lru_not_empty<K: Eq, V, const CAP: usize, I: Unsigned + PrimInt>(
 }
 
 #[test]
-fn test_inserted_is_mru() {
+fn inserted_is_mru() {
     const ENTRIES: [(u8, u16); 3] = [(1, 2), (3, 4), (5, 6)];
     let mut c: ConstLru<u8, u16, 3, u8> = ConstLru::new();
     for (k, v) in ENTRIES {
@@ -25,7 +25,7 @@ fn test_inserted_is_mru() {
 }
 
 #[test]
-fn test_fill_shuffle_empty_fill() {
+fn fill_shuffle_empty_fill() {
     const ENTRIES: [(u32, u64); 3] = [(1, 2), (3, 4), (5, 6)];
 
     // head -> 2 <-> 1 <-> 0 <- tail

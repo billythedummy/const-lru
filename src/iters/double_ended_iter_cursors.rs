@@ -11,8 +11,13 @@ pub struct DoubleEndedIterCursors<I: PrimInt + Unsigned, const CAP: usize> {
 
 impl<I: PrimInt + Unsigned, const CAP: usize> DoubleEndedIterCursors<I, CAP> {
     pub fn new<K: Eq, V>(const_lru: &ConstLru<K, V, CAP, I>) -> Self {
+        let from_head = if const_lru.is_empty() {
+            const_lru.cap()
+        } else {
+            const_lru.head
+        };
         Self {
-            from_head: const_lru.head,
+            from_head,
             from_tail: const_lru.tail,
         }
     }

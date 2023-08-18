@@ -5,7 +5,7 @@ use std::rc::Rc;
 use const_lru::{ConstLru, InsertReplaced};
 
 #[test]
-fn test_drops() {
+fn drops() {
     let k = Rc::new(0);
     let v = Rc::new(1);
     {
@@ -19,7 +19,7 @@ fn test_drops() {
 }
 
 #[test]
-fn test_clear_drops() {
+fn clear_drops() {
     let k = Rc::new(0);
     let v = Rc::new(1);
     let mut c: ConstLru<Rc<u8>, Rc<u16>, 1, u8> = ConstLru::new();
@@ -32,7 +32,7 @@ fn test_clear_drops() {
 }
 
 #[test]
-fn test_remove_drops() {
+fn remove_drops() {
     const K_VAL: u8 = 0;
     const V_VAL: u16 = 1;
     let k = Rc::new(K_VAL);
@@ -51,7 +51,7 @@ fn test_remove_drops() {
 }
 
 #[test]
-fn test_mut_write_drops() {
+fn mut_write_drops() {
     let k = Rc::new(0);
     let v = Rc::new(1);
     let mut c: ConstLru<Rc<u8>, Rc<u16>, 1, u8> = ConstLru::new();
@@ -64,7 +64,7 @@ fn test_mut_write_drops() {
 }
 
 #[test]
-fn test_eviction_no_double_free() {
+fn eviction_no_double_free() {
     const K_VAL: u8 = 0;
     const V_VAL: u16 = 1;
     let k = Rc::new(K_VAL);
@@ -87,7 +87,7 @@ fn test_eviction_no_double_free() {
 }
 
 #[test]
-fn test_insert_return_old_val_no_double_free() {
+fn insert_return_old_val_no_double_free() {
     const K_VAL: u8 = 0;
     const V_VAL: u16 = 1;
     let k = Rc::new(K_VAL);
@@ -109,7 +109,7 @@ fn test_insert_return_old_val_no_double_free() {
 }
 
 #[test]
-fn test_clone_no_double_free() {
+fn clone_no_double_free() {
     const K_VAL: u8 = 0;
     const V_VAL: u16 = 1;
     let k = Rc::new(K_VAL);
@@ -128,7 +128,7 @@ fn test_clone_no_double_free() {
 }
 
 #[test]
-fn test_into_iter_no_double_free() {
+fn into_iter_no_double_free() {
     let k = Rc::new(0);
     let v = Rc::new(1);
     let mut c: ConstLru<Rc<u8>, Rc<u16>, 1, u8> = ConstLru::new();
@@ -144,7 +144,7 @@ fn test_into_iter_no_double_free() {
 }
 
 #[test]
-fn test_into_iter_partially_consumed_no_double_free() {
+fn into_iter_partially_consumed_no_double_free() {
     let entries: [(Rc<u8>, Rc<u16>); 2] = [(Rc::new(0), Rc::new(1)), (Rc::new(2), Rc::new(3))];
 
     {

@@ -1,4 +1,5 @@
 #![no_std]
+#![doc = include_str!("../README.md")]
 
 use core::borrow::Borrow;
 use core::mem::MaybeUninit;
@@ -31,7 +32,7 @@ pub struct ConstLru<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
 
     /// head is index of most recently used
     ///
-    /// ConstLru is empty if value == CAP
+    /// can be any value if cache is empty
     head: I,
 
     /// tail is index of least recently used
@@ -149,10 +150,8 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         }
         let val = unsafe { self.values[i].assume_init_read() };
 
-        if self.len() == I::one() {
-            // correct links already in place, just update head
-            self.head = self.cap();
-        } else {
+        // if len == 1, correct links are already in place
+        if self.len() > I::one() {
             // len > 1
             // move to front of free list
             self.unlink_node(index);
@@ -207,12 +206,8 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
         let is_one_elem_list = self.head == self.tail;
 
-        if self.head == index {
-            if is_one_elem_list {
-                self.head = self.cap();
-            } else {
-                self.head = next;
-            }
+        if self.head == index && !is_one_elem_list {
+            self.head = next;
         }
 
         if self.tail == index && !is_one_elem_list {

@@ -1,7 +1,7 @@
 use const_lru::{ConstLru, InsertReplaced};
 
 #[test]
-fn test_one_cap_simple() {
+fn one_cap_simple() {
     const ENTRY: (u8, u64) = (1, 2);
     const NON_KEY: u8 = 3;
 
@@ -25,7 +25,7 @@ fn test_one_cap_simple() {
 }
 
 #[test]
-fn test_one_cap_evict() {
+fn one_cap_evict() {
     const ENTRIES: [(u32, u16); 3] = [(1, 2), (3, 4), (5, 6)];
 
     let mut c: ConstLru<u32, u16, 1, u8> = ConstLru::new();
@@ -41,7 +41,7 @@ fn test_one_cap_evict() {
 }
 
 #[test]
-fn test_one_cap_get_mut() {
+fn one_cap_write_mut() {
     const K: u16 = 1;
     const V_OLD: u64 = 2;
     const V_NEW: u64 = 3;
