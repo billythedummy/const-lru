@@ -6,6 +6,7 @@ use num_traits::{PrimInt, Unsigned};
 
 mod iters;
 
+pub use iters::double_ended_iter_cursors::DoubleEndedIterCursors;
 pub use iters::into_iter::IntoIter;
 pub use iters::iter::Iter;
 pub use iters::iter_mut::IterMut;
@@ -93,15 +94,14 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         }
     }
 
-    /// Inserts a key-value pair into the map.
+    /// Inserts a key-value pair into the map. The entry is moved to the most-recently-used slot
     ///
     /// If the map did not have this key present and is not full, None is returned.
     ///
     /// If the map did have this key present, the value is updated, and the old value is returned.
     /// The key is not updated, though; this matters for types that can be == without being identical.
-    /// The entry is moved to the most-recently-used slot
     ///
-    /// If the map is full, the least-recently used key-value pair is evicted and returned
+    /// If the map is full, the least-recently used key-value pair is evicted and returned.
     pub fn insert(&mut self, k: K, v: V) -> Option<InsertReplaced<K, V>> {
         for (i, old_k, old_v) in IterMutIndexed::new(self) {
             if *old_k == k {
@@ -248,32 +248,28 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         self.head = index;
     }
 
-    /// Also moves element to most-recently-used position.
+    /// Gets reference to a value and moves entry to most-recently-used slot.
     ///
     /// To not update to most-recently-used, use [`get_untouched`]
     pub fn get<Q: Eq>(&mut self, k: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
     {
-        let index_opt = self.get_index_of(k);
-        index_opt.map(|index| {
-            self.move_to_head(index);
-            unsafe { self.values[index.to_usize().unwrap()].assume_init_ref() }
-        })
+        let index = self.get_index_of(k)?;
+        self.move_to_head(index);
+        Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_ref() })
     }
 
-    /// Also moves element to most-recently-used position.
+    /// Gets mut reference to a value and moves entry to most-recently-used slot.
     ///
     /// To not update to most-recently-used, use [`get_mut_untouched`]
     pub fn get_mut<Q: Eq>(&mut self, k: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
     {
-        let index_opt = self.get_index_of(k);
-        index_opt.map(|index| {
-            self.move_to_head(index);
-            unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() }
-        })
+        let index = self.get_index_of(k)?;
+        self.move_to_head(index);
+        Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() })
     }
 
     fn get_index_of<Q: Eq>(&self, k: &Q) -> Option<I>
@@ -288,7 +284,7 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         None
     }
 
-    /// Get reference to value without updating to most-recently-used position
+    /// Get reference to value without updating the entry to most-recently-used slot
     ///
     /// To update to most-recently-used, use [`get`]
     pub fn get_untouched<Q: Eq>(&self, k: &Q) -> Option<&V>
@@ -303,9 +299,9 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         None
     }
 
-    /// Get mut reference to value without updating to most-recently-used position
+    /// Get mut reference to value without updating the entry to most-recently-used slot
     ///
-    /// To update to most-recently-used, use [`get`]
+    /// To update to most-recently-used, use [`get_mut`]
     pub fn get_mut_untouched<Q: Eq>(&mut self, k: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
@@ -318,10 +314,16 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         None
     }
 
+    /// Creates an iterator that iterates through the keys and values of the ConstLru from most-recently-used to least-recently-used
+    ///
+    /// Does not change the LRU order of the elements.
     pub fn iter(&self) -> Iter<K, V, CAP, I> {
         Iter::new(self)
     }
 
+    /// Creates an iterator that iterates through the keys and mutable values of the ConstLru from most-recently-used to least-recently-used
+    ///
+    /// Does not change the LRU order of the elements.
     pub fn iter_mut(&mut self) -> IterMut<K, V, CAP, I> {
         IterMut::new(self)
     }
@@ -340,6 +342,10 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
     pub fn is_full(&self) -> bool {
         self.len() == self.cap()
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::new();
     }
 }
 
@@ -392,6 +398,7 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IntoIterator for ConstLr
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertReplaced<K, V> {
     LruEvicted(K, V),
     OldValue(V),

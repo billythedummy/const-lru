@@ -4,7 +4,8 @@ use crate::ConstLru;
 
 use super::iter::Iter;
 
-/// iterator that also returns the index of the current element
+/// Iterator that also returns the index of the current element
+///
 /// Used for internal implementation
 pub struct IterIndexed<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned>(
     Iter<'a, K, V, CAP, I>,

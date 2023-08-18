@@ -6,7 +6,7 @@ use super::double_ended_iter_cursors::DoubleEndedIterCursors;
 
 /// Iterates through the keys and values of the ConstLru from most-recently-used to least-recently-used
 ///
-/// Does not change the usage order othe elements.
+/// Does not change the LRU order of the elements.
 pub struct Iter<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> {
     cursors: DoubleEndedIterCursors<I, CAP>,
     const_lru: &'a ConstLru<K, V, CAP, I>,

@@ -34,6 +34,11 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IntoIter<K,
         }
         let i = self.cursors.get_from_head_idx();
         self.cursors.advance_from_head(&self.const_lru);
+        // get_entry copies out (k, v),
+        // we need to truncate the const_lru so that they dont get dropped again
+        // when const_lru drops
+        self.const_lru.head = self.cursors.get_from_head();
+        self.const_lru.len = self.const_lru.len - I::one();
         Some(self.get_entry(i))
     }
 }
@@ -47,6 +52,11 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
         }
         let i = self.cursors.get_from_tail_idx();
         self.cursors.retreat_from_tail(&self.const_lru);
+        // get_entry copies out (k, v),
+        // we need to truncate the const_lru so that they dont get dropped again
+        // when const_lru drops
+        self.const_lru.tail = self.cursors.get_from_tail();
+        self.const_lru.len = self.const_lru.len - I::one();
         Some(self.get_entry(i))
     }
 }

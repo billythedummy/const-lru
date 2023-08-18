@@ -1,6 +1,6 @@
 # const-lru
 
-Simple `no_std` constant capacity LRU cache.
+Simple `no_std` constant capacity LRU cache backed by a couple of const arrays.
 
 Use of const generics results in allocation for max capacity being done up-front.
 

@@ -5,6 +5,7 @@ use crate::ConstLru;
 use super::iter_mut::IterMut;
 
 /// mut iterator that also returns the index of the current element
+///
 /// Used for internal implementation
 pub struct IterMutIndexed<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned>(
     IterMut<'a, K, V, CAP, I>,

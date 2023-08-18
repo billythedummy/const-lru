@@ -10,7 +10,7 @@ use super::double_ended_iter_cursors::DoubleEndedIterCursors;
 ///
 /// Does not change the LRU order of the elements.
 ///
-/// Only used for to implement `Drop` for ConstLru
+/// Only used to implement `Drop` for ConstLru
 pub struct IterMaybeUninit<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> {
     cursors: DoubleEndedIterCursors<I, CAP>,
     const_lru: &'a mut ConstLru<K, V, CAP, I>,
