@@ -44,6 +44,11 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
         self.cursors.advance_from_head(self.const_lru);
         Some(self.get_entry_mut(i))
     }
+
+    // TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html when it lands in stable
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(CAP))
+    }
 }
 
 impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator

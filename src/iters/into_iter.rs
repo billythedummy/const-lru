@@ -41,6 +41,17 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IntoIter<K,
         self.const_lru.len = self.const_lru.len - I::one();
         Some(self.get_entry(i))
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let l = self.const_lru.len.to_usize().unwrap();
+        (l, Some(l))
+    }
+}
+
+// TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html when it lands in stable
+impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ExactSizeIterator
+    for IntoIter<K, V, CAP, I>
+{
 }
 
 impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
