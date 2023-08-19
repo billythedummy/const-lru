@@ -19,7 +19,7 @@ use iters::iter_mut_indexed::IterMutIndexed;
 /// Constant capacity key-addressed LRU cache.
 ///
 /// Generics:
-/// - `K`. Type of key. `PartialEq` is used to address entries.
+/// - `K`. Type of key. `Eq` is used to address entries.
 /// - `V`. Type of value.
 /// - `CAP`. Capacity of the cache. Must be > 0. All memory is allocated upfront.
 /// - `I`. Type of the index used. Should be an unsigned primitive type smaller in bitwidth than `usize`.
@@ -60,7 +60,7 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// panics if
     /// - CAP > I::MAX
     /// - I::MAX > usize::MAX
-    /// - CAP = 0
+    /// - CAP == 0
     pub fn new() -> Self {
         let i_max = I::max_value()
             .to_usize()
@@ -74,11 +74,13 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
         let cap = I::from(CAP).unwrap();
 
+        // [1, 2, ..., cap-1, cap]
         let mut nexts = [cap; CAP];
         for (i, next) in nexts.iter_mut().enumerate().take(CAP - 1) {
             *next = I::from(i + 1).unwrap();
         }
 
+        // [cap, 0, 1, ..., cap-2]
         let mut prevs = [cap; CAP];
         for (i, prev) in prevs.iter_mut().enumerate().skip(1) {
             *prev = I::from(i - 1).unwrap();
@@ -155,13 +157,11 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
             // len > 1
             // move to front of free list
             self.unlink_node(index);
-            let i = index.to_usize().unwrap();
             let t = self.tail.to_usize().unwrap();
             let first_free = self.nexts[t];
 
             if first_free < self.cap() {
-                let f = first_free.to_usize().unwrap();
-                self.prevs[f] = index;
+                self.prevs[first_free.to_usize().unwrap()] = index;
             }
             self.nexts[i] = first_free;
 
@@ -182,8 +182,7 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     ///
     /// When this fn returns, `index`'s next and prev should be treated as invalid
     ///
-    /// `self.head` is set to `CAP` if only 1 valid elem in list and index is valid
-    /// `self.tail` is not modified if only 1 elem in list
+    /// `self.head` and `self.tail` are not modified if only 1 elem in list
     ///
     /// Requirements:
     /// - index < CAP
@@ -194,14 +193,12 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
         // index.next.prev = index.prev
         if next != self.cap() {
-            let n = next.to_usize().unwrap();
-            self.prevs[n] = prev;
+            self.prevs[next.to_usize().unwrap()] = prev;
         }
 
         // index.prev.next = index.next
         if prev != self.cap() {
-            let p = prev.to_usize().unwrap();
-            self.nexts[p] = next;
+            self.nexts[prev.to_usize().unwrap()] = next;
         }
 
         let is_one_elem_list = self.head == self.tail;
@@ -237,8 +234,7 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         self.prevs[i] = self.cap();
         self.nexts[i] = head;
 
-        let h = self.head.to_usize().unwrap();
-        self.prevs[h] = index;
+        self.prevs[head.to_usize().unwrap()] = index;
 
         self.head = index;
     }
@@ -312,6 +308,8 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// Creates an iterator that iterates through the keys and values of the ConstLru from most-recently-used to least-recently-used
     ///
     /// Does not change the LRU order of the elements.
+    ///
+    /// Double-ended: reversing iterates from least-recently-used to most-recently-used
     pub fn iter(&self) -> Iter<K, V, CAP, I> {
         Iter::new(self)
     }
@@ -319,6 +317,8 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// Creates an iterator that iterates through the keys and mutable values of the ConstLru from most-recently-used to least-recently-used
     ///
     /// Does not change the LRU order of the elements.
+    ///
+    /// Double-ended: reversing iterates from least-recently-used to most-recently-used
     pub fn iter_mut(&mut self) -> IterMut<K, V, CAP, I> {
         IterMut::new(self)
     }
@@ -348,21 +348,20 @@ impl<K: Eq + Clone, V: Clone, const CAP: usize, I: PrimInt + Unsigned> Clone
     for ConstLru<K, V, CAP, I>
 {
     fn clone(&self) -> Self {
-        let mut keys: [MaybeUninit<K>; CAP] = unsafe { MaybeUninit::uninit().assume_init() };
-        let mut values: [MaybeUninit<V>; CAP] = unsafe { MaybeUninit::uninit().assume_init() };
-        for (i, k, v) in IterIndexed::new(self) {
-            keys[i.to_usize().unwrap()].write(k.clone());
-            values[i.to_usize().unwrap()].write(v.clone());
-        }
-        Self {
+        let mut res = Self {
             len: self.len,
             head: self.head,
             tail: self.tail,
             nexts: self.nexts,
             prevs: self.prevs,
-            keys,
-            values,
+            keys: unsafe { MaybeUninit::uninit().assume_init() },
+            values: unsafe { MaybeUninit::uninit().assume_init() },
+        };
+        for (i, k, v) in IterIndexed::new(self) {
+            res.keys[i.to_usize().unwrap()].write(k.clone());
+            res.values[i.to_usize().unwrap()].write(v.clone());
         }
+        res
     }
 }
 

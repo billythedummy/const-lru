@@ -14,8 +14,9 @@ LRU-ordering is implemented using a doubly-linked list, but with array indices i
 
 To maximize space-efficiency and hence cache-friendliness, the last optional generic `I` specifies the index type, which can be set to an unsigned primitive int type with smaller bitwidth than `usize`, as long as it's wide enough to store the cache's capacity.
 
-```rust ignore
-// on 64-bit machines
+```rust
+use const_lru::ConstLru;
+
 let c: ConstLru<u8, u8, 255> = ConstLru::new(); // size = 4616, align = 8
 let c: ConstLru<u8, u8, 255, u8> = ConstLru::new(); // size = 1023, align = 1
 ```

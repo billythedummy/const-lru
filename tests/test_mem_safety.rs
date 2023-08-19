@@ -110,21 +110,25 @@ fn insert_return_old_val_no_double_free() {
 
 #[test]
 fn clone_no_double_free() {
-    const K_VAL: u8 = 0;
-    const V_VAL: u16 = 1;
-    let k = Rc::new(K_VAL);
-    let v = Rc::new(V_VAL);
-    let mut c: ConstLru<Rc<u8>, Rc<u16>, 1, u8> = ConstLru::new();
-    c.insert(k.clone(), v.clone());
-    assert_eq!(Rc::strong_count(&k), 2);
-    assert_eq!(Rc::strong_count(&v), 2);
+    let entries: [(Rc<u8>, Rc<u16>); 2] = [(Rc::new(0), Rc::new(1)), (Rc::new(2), Rc::new(3))];
+    let mut c: ConstLru<Rc<u8>, Rc<u16>, 2, u8> = ConstLru::new();
+    c.insert(entries[0].0.clone(), entries[0].1.clone());
+    c.insert(entries[1].0.clone(), entries[1].1.clone());
+    assert_eq!(Rc::strong_count(&entries[0].0), 2);
+    assert_eq!(Rc::strong_count(&entries[0].1), 2);
+    assert_eq!(Rc::strong_count(&entries[1].0), 2);
+    assert_eq!(Rc::strong_count(&entries[1].1), 2);
     {
         let _cloned = c.clone();
-        assert_eq!(Rc::strong_count(&k), 3);
-        assert_eq!(Rc::strong_count(&v), 3);
+        assert_eq!(Rc::strong_count(&entries[0].0), 3);
+        assert_eq!(Rc::strong_count(&entries[0].1), 3);
+        assert_eq!(Rc::strong_count(&entries[1].0), 3);
+        assert_eq!(Rc::strong_count(&entries[1].1), 3);
     }
-    assert_eq!(Rc::strong_count(&k), 2);
-    assert_eq!(Rc::strong_count(&v), 2);
+    assert_eq!(Rc::strong_count(&entries[0].0), 2);
+    assert_eq!(Rc::strong_count(&entries[0].1), 2);
+    assert_eq!(Rc::strong_count(&entries[1].0), 2);
+    assert_eq!(Rc::strong_count(&entries[1].1), 2);
 }
 
 #[test]
