@@ -7,14 +7,13 @@ use num_traits::{PrimInt, Unsigned};
 
 mod iters;
 
-pub use iters::double_ended_iter_cursors::DoubleEndedIterCursors;
 pub use iters::into_iter::IntoIter;
 pub use iters::iter::Iter;
 pub use iters::iter_mut::IterMut;
 
-use iters::iter_indexed::IterIndexed;
+use iters::iter::IterIndexed;
 use iters::iter_maybe_uninit::IterMaybeUninit;
-use iters::iter_mut_indexed::IterMutIndexed;
+use iters::iter_mut::IterMutIndexed;
 
 /// Constant capacity key-addressed LRU cache.
 ///

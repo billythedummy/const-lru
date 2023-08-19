@@ -18,10 +18,6 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iter<'a, K, V, CAP, 
         Self { cursors, const_lru }
     }
 
-    pub fn cursors(&self) -> &DoubleEndedIterCursors<I, CAP> {
-        &self.cursors
-    }
-
     fn get_entry(&mut self, i: usize) -> (&'a K, &'a V) {
         let key = unsafe { self.const_lru.keys[i].assume_init_ref() };
         let val = unsafe { self.const_lru.values[i].assume_init_ref() };
@@ -52,5 +48,40 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
         let i = self.cursors.get_from_tail_idx();
         self.cursors.retreat_from_tail(self.const_lru);
         Some(self.get_entry(i))
+    }
+}
+
+/// Iterator that also returns the index of the current element
+///
+/// Used for internal implementation
+pub struct IterIndexed<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned>(
+    Iter<'a, K, V, CAP, I>,
+);
+
+impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IterIndexed<'a, K, V, CAP, I> {
+    pub fn new(const_lru: &'a ConstLru<K, V, CAP, I>) -> Self {
+        Self(Iter::new(const_lru))
+    }
+}
+
+impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
+    for IterIndexed<'a, K, V, CAP, I>
+{
+    type Item = (I, &'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = self.0.cursors.get_from_head();
+        // next() modifies cursors, so extract index first
+        self.0.next().map(|(k, v)| (i, k, v))
+    }
+}
+
+impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
+    for IterIndexed<'a, K, V, CAP, I>
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let i = self.0.cursors.get_from_tail();
+        // next_back() modifies cursors, so extract index first
+        self.0.next_back().map(|(k, v)| (i, k, v))
     }
 }
