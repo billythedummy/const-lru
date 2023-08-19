@@ -5,3 +5,10 @@ edition = "2021"
 
 [dependencies]
 num-traits = { version = ">=0.2", default-features = false }
+
+[dev-dependencies]
+criterion = { version = "^0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "bench"
+harness = false
