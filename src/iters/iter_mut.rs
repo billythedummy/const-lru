@@ -7,12 +7,12 @@ use super::double_ended_iter_cursors::DoubleEndedIterCursors;
 /// Iterates through the keys and mutable values of the ConstLru from most-recently-used to least-recently-used
 ///
 /// Does not change the LRU order of the elements.
-pub struct IterMut<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> {
+pub struct IterMut<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> {
     cursors: DoubleEndedIterCursors<I, CAP>,
     const_lru: &'a mut ConstLru<K, V, CAP, I>,
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IterMut<'a, K, V, CAP, I> {
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> IterMut<'a, K, V, CAP, I> {
     pub fn new(const_lru: &'a mut ConstLru<K, V, CAP, I>) -> Self {
         let cursors = DoubleEndedIterCursors::new(const_lru);
         Self { cursors, const_lru }
@@ -28,7 +28,7 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IterMut<'a, K, V, CA
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IterMut<'a, K, V, CAP, I> {
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IterMut<'a, K, V, CAP, I> {
     type Item = (&'a K, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -46,7 +46,7 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IterMut
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
     for IterMut<'a, K, V, CAP, I>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
@@ -56,45 +56,5 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
         let i = self.cursors.get_from_tail_idx();
         self.cursors.retreat_from_tail(self.const_lru);
         Some(self.get_entry_mut(i))
-    }
-}
-
-/// mut iterator that also returns the index of the current element
-///
-/// Used for internal implementation
-pub struct IterMutIndexed<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned>(
-    IterMut<'a, K, V, CAP, I>,
-);
-
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IterMutIndexed<'a, K, V, CAP, I> {
-    pub fn new(const_lru: &'a mut ConstLru<K, V, CAP, I>) -> Self {
-        Self(IterMut::new(const_lru))
-    }
-}
-
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
-    for IterMutIndexed<'a, K, V, CAP, I>
-{
-    type Item = (I, &'a K, &'a mut V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let i = self.0.cursors.get_from_head();
-        // next() modifies cursors, so extract index first
-        self.0.next().map(|(k, v)| (i, k, v))
-    }
-
-    // TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html when it lands in stable
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(CAP))
-    }
-}
-
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
-    for IterMutIndexed<'a, K, V, CAP, I>
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let i = self.0.cursors.get_from_tail();
-        // next_back() modifies cursors, so extract index first
-        self.0.next_back().map(|(k, v)| (i, k, v))
     }
 }

@@ -7,12 +7,12 @@ use super::double_ended_iter_cursors::DoubleEndedIterCursors;
 /// Iterates through the keys and values of the ConstLru from most-recently-used to least-recently-used
 ///
 /// Does not change the LRU order of the elements.
-pub struct IntoIter<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> {
+pub struct IntoIter<K, V, const CAP: usize, I: PrimInt + Unsigned> {
     cursors: DoubleEndedIterCursors<I, CAP>,
     const_lru: ConstLru<K, V, CAP, I>,
 }
 
-impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IntoIter<K, V, CAP, I> {
+impl<K, V, const CAP: usize, I: PrimInt + Unsigned> IntoIter<K, V, CAP, I> {
     pub fn new(const_lru: ConstLru<K, V, CAP, I>) -> Self {
         let cursors = DoubleEndedIterCursors::new(&const_lru);
         Self { cursors, const_lru }
@@ -25,7 +25,7 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IntoIter<K, V, CAP, I> {
     }
 }
 
-impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IntoIter<K, V, CAP, I> {
+impl<K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IntoIter<K, V, CAP, I> {
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -49,14 +49,9 @@ impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IntoIter<K,
 }
 
 // TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html when it lands in stable
-impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> ExactSizeIterator
-    for IntoIter<K, V, CAP, I>
-{
-}
+impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ExactSizeIterator for IntoIter<K, V, CAP, I> {}
 
-impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
-    for IntoIter<K, V, CAP, I>
-{
+impl<K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator for IntoIter<K, V, CAP, I> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.cursors.has_ended() {
             return None;

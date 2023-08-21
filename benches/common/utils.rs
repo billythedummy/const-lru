@@ -1,6 +1,6 @@
 use super::traits::Insert;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct BigStruct {
     pub a1: [usize; 32],
     pub a2: [usize; 32],

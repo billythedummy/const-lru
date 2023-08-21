@@ -11,12 +11,12 @@ use super::double_ended_iter_cursors::DoubleEndedIterCursors;
 /// Does not change the LRU order of the elements.
 ///
 /// Only used to implement `Drop` for ConstLru
-pub struct IterMaybeUninit<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> {
+pub struct IterMaybeUninit<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> {
     cursors: DoubleEndedIterCursors<I, CAP>,
     const_lru: &'a mut ConstLru<K, V, CAP, I>,
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IterMaybeUninit<'a, K, V, CAP, I> {
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> IterMaybeUninit<'a, K, V, CAP, I> {
     pub fn new(const_lru: &'a mut ConstLru<K, V, CAP, I>) -> Self {
         let cursors = DoubleEndedIterCursors::new(const_lru);
         Self { cursors, const_lru }
@@ -31,7 +31,7 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IterMaybeUninit<'a, 
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
     for IterMaybeUninit<'a, K, V, CAP, I>
 {
     type Item = (&'a mut MaybeUninit<K>, &'a mut MaybeUninit<V>);
@@ -51,7 +51,7 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
     for IterMaybeUninit<'a, K, V, CAP, I>
 {
     fn next_back(&mut self) -> Option<Self::Item> {

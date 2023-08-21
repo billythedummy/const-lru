@@ -16,7 +16,7 @@ impl<K: Eq + Hash, V, S: BuildHasher> Get<K, V> for HashMap<K, V, S> {
     }
 }
 
-impl<K: Eq, V, const CAP: usize, I: Unsigned + PrimInt> Get<K, V> for ConstLru<K, V, CAP, I> {
+impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Get<K, V> for ConstLru<K, V, CAP, I> {
     fn get_by_key(&mut self, k: &K) -> Option<&V> {
         self.get(k)
     }
@@ -32,7 +32,7 @@ impl<K: Eq + Hash, V, S: BuildHasher> Insert<K, V> for HashMap<K, V, S> {
     }
 }
 
-impl<K: Eq, V, const CAP: usize, I: Unsigned + PrimInt> Insert<K, V> for ConstLru<K, V, CAP, I> {
+impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Insert<K, V> for ConstLru<K, V, CAP, I> {
     fn insert_no_ret(&mut self, k: K, v: V) {
         self.insert(k, v);
     }

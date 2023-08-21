@@ -7,12 +7,12 @@ use super::double_ended_iter_cursors::DoubleEndedIterCursors;
 /// Iterates through the keys and values of the ConstLru from most-recently-used to least-recently-used
 ///
 /// Does not change the LRU order of the elements.
-pub struct Iter<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> {
+pub struct Iter<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> {
     cursors: DoubleEndedIterCursors<I, CAP>,
     const_lru: &'a ConstLru<K, V, CAP, I>,
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iter<'a, K, V, CAP, I> {
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Iter<'a, K, V, CAP, I> {
     pub fn new(const_lru: &'a ConstLru<K, V, CAP, I>) -> Self {
         let cursors = DoubleEndedIterCursors::new(const_lru);
         Self { cursors, const_lru }
@@ -25,7 +25,7 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iter<'a, K, V, CAP, 
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for Iter<'a, K, V, CAP, I> {
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for Iter<'a, K, V, CAP, I> {
     type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -43,7 +43,7 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for Iter<'a
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
     for Iter<'a, K, V, CAP, I>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
@@ -59,19 +59,15 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
 /// Iterator that also returns the index of the current element
 ///
 /// Used for internal implementation
-pub struct IterIndexed<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned>(
-    Iter<'a, K, V, CAP, I>,
-);
+pub struct IterIndexed<'a, K, V, const CAP: usize, I: PrimInt + Unsigned>(Iter<'a, K, V, CAP, I>);
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IterIndexed<'a, K, V, CAP, I> {
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> IterIndexed<'a, K, V, CAP, I> {
     pub fn new(const_lru: &'a ConstLru<K, V, CAP, I>) -> Self {
         Self(Iter::new(const_lru))
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
-    for IterIndexed<'a, K, V, CAP, I>
-{
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IterIndexed<'a, K, V, CAP, I> {
     type Item = (I, &'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -86,7 +82,7 @@ impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
     }
 }
 
-impl<'a, K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
+impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
     for IterIndexed<'a, K, V, CAP, I>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
