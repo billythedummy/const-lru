@@ -26,10 +26,12 @@ fn inserted_is_mru() {
 
 #[test]
 fn fill_shuffle_empty_fill() {
-    const ENTRIES: [(u32, u64); 3] = [(1, 2), (3, 4), (5, 6)];
+    const ENTRY_EVICT: (u32, u64) = (2, 8);
+    const ENTRIES: [(u32, u64); 3] = [(1, 2), (5, 6), (3, 4)];
 
     // head -> 2 <-> 1 <-> 0 <- tail
     let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
+    c.insert(ENTRY_EVICT.0, ENTRY_EVICT.1);
     for (k, v) in ENTRIES {
         c.insert(k, v);
     }

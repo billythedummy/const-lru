@@ -94,6 +94,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             match bs_i.cmp(&evicted_bs_i) {
                 // nothing to be done, bs_index[bs_i] already == tail
                 Ordering::Equal => (),
+                // TODO: code-coverage: this branch not covered by tests
                 Ordering::Less => {
                     // shift everything between [bs_i, evicted_bs_i) right
                     // then insert at bs_i
