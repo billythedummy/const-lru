@@ -263,7 +263,6 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// panics if
     /// - CAP > I::MAX
     /// - I::MAX > usize::MAX
-    /// - CAP == 0
     pub fn new() -> Self {
         let i_max = I::max_value()
             .to_usize()
