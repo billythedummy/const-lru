@@ -19,13 +19,10 @@ use iters::iter_maybe_uninit::IterMaybeUninit;
 /// Constant capacity key-addressed LRU cache.
 ///
 /// Generics:
-/// - `K`. Type of key. `Eq` is used to address entries.
+/// - `K`. Type of key. `Ord` is used for lookup and to address entries.
 /// - `V`. Type of value.
 /// - `CAP`. Capacity of the cache. Must be > 0. All memory is allocated upfront.
 /// - `I`. Type of the index used. Should be an unsigned primitive type smaller in bitwidth than `usize`.
-///
-/// Some implementation details:
-/// - Fields are arranged in a struct-of-arrays format
 #[derive(Debug)]
 pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
     len: I,
@@ -60,6 +57,8 @@ pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
 impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// Inserts a key-value pair into the map. The entry is moved to the most-recently-used slot
     ///
+    /// If CAP == 0, None is returned.
+    ///
     /// If the map did not have this key present and is not full, None is returned.
     ///
     /// If the map did have this key present, the value is updated, and the old value is returned.
@@ -67,6 +66,10 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     ///
     /// If the map is full, the least-recently used key-value pair is evicted and returned.
     pub fn insert(&mut self, k: K, v: V) -> Option<InsertReplaced<K, V>> {
+        if CAP == 0 {
+            return None;
+        }
+
         // case-1: existing
         let bs_i = match self.get_index_of(&k) {
             Ok((index, _)) => {
@@ -227,7 +230,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
                 probe.borrow().cmp(k)
             })
             .map(|bs_i| (self.bs_index[bs_i], bs_i))
-            .map_err(|bs_i| cmp::min(bs_i, CAP - 1))
+            .map_err(|bs_i| if CAP == 0 { 0 } else { cmp::min(bs_i, CAP - 1) })
     }
 
     /// Get reference to value without updating the entry to most-recently-used slot
@@ -267,16 +270,15 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         if CAP > i_max {
             panic!("CAP > I::MAX");
         }
-        if CAP == 0 {
-            panic!("CAP == 0");
-        }
 
         let cap = I::from(CAP).unwrap();
 
         // [1, 2, ..., cap-1, cap]
         let mut nexts = [cap; CAP];
-        for (i, next) in nexts.iter_mut().enumerate().take(CAP - 1) {
-            *next = I::from(i + 1).unwrap();
+        if CAP > 0 {
+            for (i, next) in nexts.iter_mut().enumerate().take(CAP - 1) {
+                *next = I::from(i + 1).unwrap();
+            }
         }
 
         // [cap, 0, 1, ..., cap-2]
