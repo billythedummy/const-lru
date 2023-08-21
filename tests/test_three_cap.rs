@@ -35,8 +35,8 @@ fn fill_shuffle_empty_fill() {
     }
 
     // head -> 0 <-> 1 <-> 2 <- tail
-    c.get(&ENTRIES[1].0).unwrap();
-    c.get(&ENTRIES[0].0).unwrap();
+    assert_eq!(c.get(&ENTRIES[1].0).unwrap(), &ENTRIES[1].1);
+    assert_eq!(c.get(&ENTRIES[0].0).unwrap(), &ENTRIES[0].1);
     let mut iter = c.iter();
     assert_eq!(iter.next().unwrap(), (&ENTRIES[0].0, &ENTRIES[0].1));
     assert_eq!(iter.next().unwrap(), (&ENTRIES[1].0, &ENTRIES[1].1));
@@ -44,39 +44,39 @@ fn fill_shuffle_empty_fill() {
     assert!(iter.next().is_none());
 
     // head -> 0 <-> 2 <- tail
-    c.remove(&ENTRIES[1].0);
+    assert_eq!(c.remove(&ENTRIES[1].0).unwrap(), ENTRIES[1].1);
     let mut iter = c.iter();
     assert_eq!(iter.next().unwrap(), (&ENTRIES[0].0, &ENTRIES[0].1));
     assert_eq!(iter.next().unwrap(), (&ENTRIES[2].0, &ENTRIES[2].1));
     assert!(iter.next().is_none());
 
     // head -> 2 <- tail
-    c.remove(&ENTRIES[0].0);
+    assert_eq!(c.remove(&ENTRIES[0].0).unwrap(), ENTRIES[0].1);
     let mut iter = c.iter();
     assert_eq!(iter.next().unwrap(), (&ENTRIES[2].0, &ENTRIES[2].1));
     assert!(iter.next().is_none());
 
     // empty
-    c.remove(&ENTRIES[2].0);
+    assert_eq!(c.remove(&ENTRIES[2].0).unwrap(), ENTRIES[2].1);
     assert!(c.is_empty());
     let mut iter = c.iter();
     assert!(iter.next().is_none());
 
     // head -> 2 <- tail
-    c.insert(ENTRIES[2].0, ENTRIES[2].1);
+    assert!(c.insert(ENTRIES[2].0, ENTRIES[2].1).is_none());
     let mut iter = c.iter();
     assert_eq!(iter.next().unwrap(), (&ENTRIES[2].0, &ENTRIES[2].1));
     assert!(iter.next().is_none());
 
     // head -> 1 <-> 2 <- tail
-    c.insert(ENTRIES[1].0, ENTRIES[1].1);
+    assert!(c.insert(ENTRIES[1].0, ENTRIES[1].1).is_none());
     let mut iter = c.iter();
     assert_eq!(iter.next().unwrap(), (&ENTRIES[1].0, &ENTRIES[1].1));
     assert_eq!(iter.next().unwrap(), (&ENTRIES[2].0, &ENTRIES[2].1));
     assert!(iter.next().is_none());
 
     // head -> 0 <-> 1 <-> 2 <- tail
-    c.insert(ENTRIES[0].0, ENTRIES[0].1);
+    assert!(c.insert(ENTRIES[0].0, ENTRIES[0].1).is_none());
     let mut iter = c.iter();
     assert_eq!(iter.next().unwrap(), (&ENTRIES[0].0, &ENTRIES[0].1));
     assert_eq!(iter.next().unwrap(), (&ENTRIES[1].0, &ENTRIES[1].1));

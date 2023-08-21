@@ -422,7 +422,7 @@ impl<K: Clone, V: Clone, const CAP: usize, I: PrimInt + Unsigned> Clone for Cons
     }
 }
 
-impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> Default for ConstLru<K, V, CAP, I> {
+impl<K, V, const CAP: usize, I: PrimInt + Unsigned> Default for ConstLru<K, V, CAP, I> {
     fn default() -> Self {
         Self::new()
     }
@@ -439,7 +439,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> Drop for ConstLru<K, V, CAP,
     }
 }
 
-impl<K: Eq, V, const CAP: usize, I: PrimInt + Unsigned> IntoIterator for ConstLru<K, V, CAP, I> {
+impl<K, V, const CAP: usize, I: PrimInt + Unsigned> IntoIterator for ConstLru<K, V, CAP, I> {
     type Item = <IntoIter<K, V, CAP, I> as Iterator>::Item;
 
     type IntoIter = IntoIter<K, V, CAP, I>;

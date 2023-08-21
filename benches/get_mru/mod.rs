@@ -22,13 +22,13 @@ fn bench_get_mru<C: Insert<K, V> + Get<K, V>, K: From<u8>, V: From<u8>>(
     });
 }
 
-// 1 ns
+// 12 ns
 pub fn u8_get_mru_const_lru(c: &mut Criterion) {
     let container: ConstLru<u8, u64, 255, u8> = ConstLru::new();
     bench_get_mru(c, "u8 mru ConstLru", container);
 }
 
-// 2.5 ns
+// 13 ns
 pub fn u8_get_mru_const_lru_i_usize(c: &mut Criterion) {
     let container: ConstLru<u8, u64, 255, usize> = ConstLru::new();
     bench_get_mru(c, "u8 mru ConstLru I=usize", container);
@@ -42,7 +42,7 @@ pub fn u8_get_mru_hashmap(c: &mut Criterion) {
 
 // usize keys perform similarly to u8, so removed the benchmark
 
-// 40ns
+// 330ns
 pub fn bigstruct_get_mru_const_lru(c: &mut Criterion) {
     let container: ConstLru<BigStruct, BigStruct, 255, u8> = ConstLru::new();
     bench_get_mru(c, "bigstruct mru ConstLru", container);

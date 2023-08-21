@@ -28,7 +28,7 @@ fn bench_lru_to_mru<C: Insert<K, V> + Get<K, V>, K: From<u8>, V: From<u8>>(
     });
 }
 
-// 90 us ):
+// 2.5 us
 pub fn u8_get_lru_to_mru_const_lru(c: &mut Criterion) {
     let container: ConstLru<u8, u64, 255, u8> = ConstLru::new();
     bench_lru_to_mru(c, "u8 lru to mru ConstLru", container);
@@ -48,7 +48,7 @@ pub fn u8_get_lru_to_mru_hashmap(c: &mut Criterion) {
 
 // usize keys perform similarly to u8, so removed the benchmark
 
-// 720 us ):
+// 71 us
 pub fn bigstruct_get_lru_to_mru_const_lru(c: &mut Criterion) {
     let container: ConstLru<BigStruct, BigStruct, 255, u8> = ConstLru::new();
     bench_lru_to_mru(c, "bigstruct lru to mru ConstLru", container);
