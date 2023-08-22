@@ -41,6 +41,34 @@ fn one_cap_evict() {
 }
 
 #[test]
+fn one_cap_replace_old_val() {
+    const ENTRY_OLD: (u32, u64) = (1, 2);
+    const VAL_REPLACE: u64 = 3;
+    let mut c: ConstLru<u32, u64, 1, u8> = ConstLru::new();
+    c.insert(ENTRY_OLD.0, ENTRY_OLD.1);
+    assert_eq!(
+        c.insert(ENTRY_OLD.0, VAL_REPLACE).unwrap(),
+        InsertReplaced::OldValue(ENTRY_OLD.1)
+    );
+    assert_eq!(*c.get(&ENTRY_OLD.0).unwrap(), VAL_REPLACE);
+}
+
+#[test]
+fn one_cap_remove_empty() {
+    let mut c: ConstLru<u32, u64, 1, u8> = ConstLru::new();
+    assert!(c.remove(&1).is_none());
+}
+
+#[test]
+fn one_cap_remove() {
+    const ENTRY: (u32, u64) = (1, 2);
+    let mut c: ConstLru<u32, u64, 1, u8> = ConstLru::new();
+    c.insert(ENTRY.0, ENTRY.1);
+    assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    assert!(c.is_empty());
+}
+
+#[test]
 fn one_cap_write_mut() {
     const K: u16 = 1;
     const V_OLD: u64 = 2;

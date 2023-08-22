@@ -115,6 +115,77 @@ fn evict_bs_1_replace_bs_1_replace_lt() {
 }
 
 #[test]
+fn replace_old_val_full() {
+    const ENTRY_OLD: (u32, u64) = (1, 2);
+    const ENTRIES: [(u32, u64); 2] = [(3, 4), (5, 6)];
+    const VAL_REPLACE: u64 = 3;
+    let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
+    c.insert(ENTRY_OLD.0, ENTRY_OLD.1);
+    for (k, v) in ENTRIES {
+        c.insert(k, v);
+    }
+    assert_eq!(
+        c.insert(ENTRY_OLD.0, VAL_REPLACE).unwrap(),
+        InsertReplaced::OldValue(ENTRY_OLD.1)
+    );
+    assert_eq!(*c.get(&ENTRY_OLD.0).unwrap(), VAL_REPLACE);
+}
+
+#[test]
+fn replace_old_val_not_full() {
+    const ENTRY_OLD: (u32, u64) = (1, 2);
+    const VAL_REPLACE: u64 = 3;
+    let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
+    c.insert(ENTRY_OLD.0, ENTRY_OLD.1);
+    assert_eq!(
+        c.insert(ENTRY_OLD.0, VAL_REPLACE).unwrap(),
+        InsertReplaced::OldValue(ENTRY_OLD.1)
+    );
+    assert_eq!(*c.get(&ENTRY_OLD.0).unwrap(), VAL_REPLACE);
+}
+
+#[test]
+fn remove_empty() {
+    let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
+    assert!(c.remove(&1).is_none());
+}
+
+#[test]
+fn remove_only() {
+    const ENTRY: (u32, u64) = (1, 2);
+    let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
+    c.insert(ENTRY.0, ENTRY.1);
+    assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    assert!(c.is_empty());
+}
+
+#[test]
+fn remove_not_full() {
+    const ENTRY: (u32, u64) = (1, 2);
+    const OTHER: (u32, u64) = (3, 4);
+    let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
+    c.insert(ENTRY.0, ENTRY.1);
+    c.insert(OTHER.0, OTHER.1);
+    assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    assert_eq!(*c.get(&OTHER.0).unwrap(), OTHER.1);
+}
+
+#[test]
+fn remove_full() {
+    const ENTRY: (u32, u64) = (1, 2);
+    const OTHERS: [(u32, u64); 2] = [(3, 4), (5, 6)];
+    let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
+    c.insert(ENTRY.0, ENTRY.1);
+    for (k, v) in OTHERS {
+        c.insert(k, v);
+    }
+    assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    for (k, v) in OTHERS {
+        assert_eq!(*c.get(&k).unwrap(), v);
+    }
+}
+
+#[test]
 fn fill_shuffle_empty_fill() {
     const ENTRIES: [(u32, u64); 3] = [(1, 2), (5, 6), (3, 4)];
 
