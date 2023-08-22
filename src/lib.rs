@@ -175,7 +175,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
     /// Creates an iterator that iterates through the keys and mutable values of the `ConstLru` from most-recently-used to least-recently-used
     ///
-    /// Does not change the LRU order of the elements.
+    /// Does not change the LRU order of the elements, even if mutated.
     ///
     /// Double-ended: reversing iterates from least-recently-used to most-recently-used
     pub fn iter_mut(&mut self) -> IterMut<K, V, CAP, I> {
@@ -193,7 +193,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
     /// Creates an iterator that iterates through the keys and mutable values of the `ConstLru` in the order of its keys
     ///
-    /// Does not change the LRU order of the elements.
+    /// Does not change the LRU order of the elements, even if mutated.
     ///
     /// Double-ended: reversing iterates from descending order of its keys
     pub fn iter_key_order_mut(&mut self) -> IterKeyOrderMut<K, V, CAP, I> {

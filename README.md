@@ -36,9 +36,11 @@ where `N` is number of elements:
 - Length fetching: `O(1)` since it's stored in the struct
 - Retrieving MRU element: `O(1)` using `.iter().next()`
 - Retrieving LRU element: `O(1)` using `.iter().next_back()`
+- Retrieving entry of smallest key: `O(1)` using `.iter_key_order().next()`
+- Retrieving entry of largest key: `O(1)` using `.iter_key_order().next_back()`
 
 ## Motivation
 
 Most, if not all, general LRU cache implementations (including but not limited to [associative-cache](https://docs.rs/associative-cache), [caches](https://docs.rs/caches), [clru](https://docs.rs/clru), [hashlink](https://docs.rs/hashlink), [lru](https://docs.rs/lru)) rely on one-or-more hashmaps to give `O(1)` op times. While fast, this makes their usage less well-suited for memory-constrained environments like embedded systems since hashmaps may rehash and reallocate more memory any time. `ConstLru` on the other hand is designed to have a fixed size known at compile-time, but gives up a `O(1)` hashing-based lookup for a `O(log N)` binary-search-based lookup and more expensive inserts and removes.
 
-[uluru](https://docs.rs/uluru) is another fixed-capacity LRU-cache implementation that has `O(n)` lookup times but uses less memory.
+[uluru](https://docs.rs/uluru) is another fixed-capacity LRU-cache implementation that uses less memory but has `O(n)` lookup times.
