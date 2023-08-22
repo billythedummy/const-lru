@@ -180,3 +180,46 @@ fn into_iter_partially_consumed_no_double_free() {
     assert_eq!(Rc::strong_count(&entries[1].0), 1);
     assert_eq!(Rc::strong_count(&entries[1].1), 1);
 }
+
+#[test]
+fn try_from_takes_ownership_of_entries() {
+    let entries: [(Rc<u8>, Rc<u16>); 2] = [(Rc::new(0), Rc::new(1)), (Rc::new(2), Rc::new(3))];
+    let cloned = entries.clone();
+    assert_eq!(Rc::strong_count(&entries[0].0), 2);
+    assert_eq!(Rc::strong_count(&entries[0].1), 2);
+    assert_eq!(Rc::strong_count(&entries[1].0), 2);
+    assert_eq!(Rc::strong_count(&entries[1].1), 2);
+    {
+        let _c: ConstLru<Rc<u8>, Rc<u16>, 2, u8> = ConstLru::try_from(cloned).unwrap();
+        assert_eq!(Rc::strong_count(&entries[0].0), 2);
+        assert_eq!(Rc::strong_count(&entries[0].1), 2);
+        assert_eq!(Rc::strong_count(&entries[1].0), 2);
+        assert_eq!(Rc::strong_count(&entries[1].1), 2);
+    }
+    assert_eq!(Rc::strong_count(&entries[0].0), 1);
+    assert_eq!(Rc::strong_count(&entries[0].1), 1);
+    assert_eq!(Rc::strong_count(&entries[1].0), 1);
+    assert_eq!(Rc::strong_count(&entries[1].1), 1);
+}
+
+#[test]
+fn try_from_no_double_free_on_failure() {
+    let entries: [(Rc<u8>, Rc<u16>); 2] = [(Rc::new(0), Rc::new(1)), (Rc::new(0), Rc::new(2))];
+    let cloned = entries.clone();
+    assert_eq!(Rc::strong_count(&entries[0].0), 2);
+    assert_eq!(Rc::strong_count(&entries[0].1), 2);
+    assert_eq!(Rc::strong_count(&entries[1].0), 2);
+    assert_eq!(Rc::strong_count(&entries[1].1), 2);
+    {
+        let err = ConstLru::<Rc<u8>, Rc<u16>, 2, u8>::try_from(cloned).unwrap_err();
+        assert_eq!(err.0, Rc::new(0));
+        assert_eq!(Rc::strong_count(&entries[0].0), 2);
+        assert_eq!(Rc::strong_count(&entries[0].1), 1);
+        assert_eq!(Rc::strong_count(&entries[1].0), 1);
+        assert_eq!(Rc::strong_count(&entries[1].1), 1);
+    }
+    assert_eq!(Rc::strong_count(&entries[0].0), 1);
+    assert_eq!(Rc::strong_count(&entries[0].1), 1);
+    assert_eq!(Rc::strong_count(&entries[1].0), 1);
+    assert_eq!(Rc::strong_count(&entries[1].1), 1);
+}

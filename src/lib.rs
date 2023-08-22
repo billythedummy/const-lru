@@ -193,7 +193,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
 
     /// Gets reference to a value and moves entry to most-recently-used slot.
     ///
-    /// To not update to most-recently-used, use [`get_untouched`]
+    /// To not update to most-recently-used, use [`Self::get_untouched`]
     pub fn get<Q: Ord>(&mut self, k: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -205,7 +205,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
 
     /// Gets mut reference to a value and moves entry to most-recently-used slot.
     ///
-    /// To not update to most-recently-used, use [`get_mut_untouched`]
+    /// To not update to most-recently-used, use [`Self::get_mut_untouched`]
     pub fn get_mut<Q: Ord>(&mut self, k: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
@@ -235,7 +235,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
 
     /// Get reference to value without updating the entry to most-recently-used slot
     ///
-    /// To update to most-recently-used, use [`get`]
+    /// To update to most-recently-used, use [`Self::get`]
     pub fn get_untouched<Q: Ord>(&self, k: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -246,7 +246,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
 
     /// Get mut reference to value without updating the entry to most-recently-used slot
     ///
-    /// To update to most-recently-used, use [`get_mut`]
+    /// To update to most-recently-used, use [`Self::get_mut`]
     pub fn get_mut_untouched<Q: Ord>(&mut self, k: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
@@ -454,4 +454,68 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> IntoIterator for ConstLru<K,
 pub enum InsertReplaced<K, V> {
     LruEvicted(K, V),
     OldValue(V),
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct DuplicateKeysError<K>(
+    /// The first offending key
+    pub K,
+);
+
+/// Creates a full ConstLru cache from an `entries` array.
+///
+/// Assumes `entries` is in MRU -> LRU order.
+///
+/// Returns error if duplicate keys found.
+impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> TryFrom<[(K, V); CAP]>
+    for ConstLru<K, V, CAP, I>
+{
+    type Error = DuplicateKeysError<K>;
+
+    fn try_from(entries: [(K, V); CAP]) -> Result<Self, Self::Error> {
+        let mut res = Self::new();
+        res.len = res.cap();
+        res.head = I::zero();
+        res.tail = if CAP > 0 {
+            res.len - I::one()
+        } else {
+            I::zero()
+        };
+
+        for (i, (k, v)) in entries.into_iter().enumerate() {
+            res.keys[i].write(k);
+            res.values[i].write(v);
+        }
+
+        for (i, val) in res.bs_index.iter_mut().enumerate() {
+            *val = I::from(i).unwrap();
+        }
+        res.bs_index.sort_unstable_by(|a, b| {
+            let k_a = unsafe { res.keys[a.to_usize().unwrap()].assume_init_ref() };
+            let k_b = unsafe { res.keys[b.to_usize().unwrap()].assume_init_ref() };
+            k_a.cmp(k_b)
+        });
+
+        if CAP > 1 {
+            for w in res.bs_index.windows(2) {
+                let index_1 = w[0];
+                let i1 = index_1.to_usize().unwrap();
+                let i2 = w[1].to_usize().unwrap();
+                let k1 = unsafe { res.keys[i1].assume_init_ref() };
+                let k2 = unsafe { res.keys[i2].assume_init_ref() };
+                if k1 == k2 {
+                    // remove from list so no double free
+                    res.unlink_node(index_1);
+                    res.len = res.len - I::one();
+
+                    // cleanup value
+                    unsafe { res.values[i1].assume_init_drop() };
+                    let k_copied_out = unsafe { res.keys[i1].assume_init_read() };
+                    return Err(DuplicateKeysError(k_copied_out));
+                }
+            }
+        }
+
+        Ok(res)
+    }
 }
