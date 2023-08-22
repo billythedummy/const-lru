@@ -32,12 +32,15 @@ impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for Iter<'a, K,
         if self.cursors.has_ended() {
             return None;
         }
+        // consume then increment
         let i = self.cursors.get_from_head_idx();
         self.cursors.advance_from_head(self.const_lru);
         Some(self.get_entry(i))
     }
 
-    // TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html when it lands in stable
+    // TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html
+    // and consider adding a `seen` field to implement it
+    // when it lands in stable
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, Some(CAP))
     }
@@ -50,8 +53,9 @@ impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
         if self.cursors.has_ended() {
             return None;
         }
-        let i = self.cursors.get_from_tail_idx();
+        // decrement then consume
         self.cursors.retreat_from_tail(self.const_lru);
+        let i = self.cursors.get_from_tail_idx();
         Some(self.get_entry(i))
     }
 }
@@ -71,8 +75,8 @@ impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IterIndexed
     type Item = (I, &'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
+        // consume then increment
         let i = self.0.cursors.get_from_head();
-        // next() modifies cursors, so extract index first
         self.0.next().map(|(k, v)| (i, k, v))
     }
 
@@ -86,8 +90,9 @@ impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
     for IterIndexed<'a, K, V, CAP, I>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let i = self.0.cursors.get_from_tail();
-        // next_back() modifies cursors, so extract index first
-        self.0.next_back().map(|(k, v)| (i, k, v))
+        // decrement then consume
+        self.0
+            .next_back()
+            .map(|(k, v)| (self.0.cursors.get_from_tail(), k, v))
     }
 }

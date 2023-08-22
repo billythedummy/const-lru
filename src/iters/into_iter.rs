@@ -32,6 +32,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> Iterator for IntoIter<K, V, 
         if self.cursors.has_ended() {
             return None;
         }
+        // consume then increment
         let i = self.cursors.get_from_head_idx();
         self.cursors.advance_from_head(&self.const_lru);
         // get_entry copies out (k, v),
@@ -56,12 +57,16 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator for Into
         if self.cursors.has_ended() {
             return None;
         }
-        let i = self.cursors.get_from_tail_idx();
+        // decrement then consume
         self.cursors.retreat_from_tail(&self.const_lru);
+        let i = self.cursors.get_from_tail_idx();
         // get_entry copies out (k, v),
         // we need to truncate the const_lru so that they dont get dropped again
         // when const_lru drops
-        self.const_lru.tail = self.cursors.get_from_tail();
+
+        // index safety: from_tail is < CAP so prevs[i] wont panic
+        // but might = CAP, but in that case len = 0
+        self.const_lru.tail = self.const_lru.prevs[i];
         self.const_lru.len = self.const_lru.len - I::one();
         Some(self.get_entry(i))
     }

@@ -11,6 +11,8 @@ mod iters;
 
 pub use iters::into_iter::IntoIter;
 pub use iters::iter::Iter;
+pub use iters::iter_key_order::IterKeyOrder;
+pub use iters::iter_key_order_mut::IterKeyOrderMut;
 pub use iters::iter_mut::IterMut;
 
 use iters::iter::IterIndexed;
@@ -178,6 +180,24 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// Double-ended: reversing iterates from least-recently-used to most-recently-used
     pub fn iter_mut(&mut self) -> IterMut<K, V, CAP, I> {
         IterMut::new(self)
+    }
+
+    /// Creates an iterator that iterates through the keys and values of the `ConstLru` in the order of its keys
+    ///
+    /// Does not change the LRU order of the elements.
+    ///
+    /// Double-ended: reversing iterates from descending order of its keys
+    pub fn iter_key_order(&self) -> IterKeyOrder<K, V, CAP, I> {
+        IterKeyOrder::new(self)
+    }
+
+    /// Creates an iterator that iterates through the keys and mutable values of the `ConstLru` in the order of its keys
+    ///
+    /// Does not change the LRU order of the elements.
+    ///
+    /// Double-ended: reversing iterates from descending order of its keys
+    pub fn iter_key_order_mut(&mut self) -> IterKeyOrderMut<K, V, CAP, I> {
+        IterKeyOrderMut::new(self)
     }
 
     /// Clears the `ConstLru`, removing all key-value pairs.
