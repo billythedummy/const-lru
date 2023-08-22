@@ -2,7 +2,7 @@
 #![doc = include_str!("../README.md")]
 
 use core::borrow::Borrow;
-use core::cmp::{self, Ordering};
+use core::cmp::Ordering;
 use core::mem::MaybeUninit;
 use core::ptr;
 use num_traits::{PrimInt, Unsigned};
@@ -21,7 +21,7 @@ use iters::iter_maybe_uninit::IterMaybeUninit;
 /// Generics:
 /// - `K`. Type of key. `Ord` is used for lookup and to address entries.
 /// - `V`. Type of value.
-/// - `CAP`. Capacity of the cache. Must be > 0. All memory is allocated upfront.
+/// - `CAP`. Capacity of the cache. All memory is allocated upfront.
 /// - `I`. Type of the index used. Should be an unsigned primitive type smaller in bitwidth than `usize`.
 #[derive(Debug)]
 pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
@@ -94,7 +94,6 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             match bs_i.cmp(&evicted_bs_i) {
                 // nothing to be done, bs_index[bs_i] already == tail
                 Ordering::Equal => (),
-                // TODO: code-coverage: this branch not covered by tests
                 Ordering::Less => {
                     // shift everything between [bs_i, evicted_bs_i) right
                     // then insert at bs_i
@@ -105,17 +104,18 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
                     self.bs_index[bs_i] = self.tail;
                 }
                 Ordering::Greater => {
-                    // shift everything between (evicted_bs_i, bs_i] left
-                    // then insert at bs_i
+                    // shift everything between (evicted_bs_i, bs_i - 1] left
+                    // then insert at bs_i - 1
                     let evicted_bs_i_ptr: *mut I = &mut self.bs_index[evicted_bs_i];
+                    let bs_i_sub_1 = bs_i - 1;
                     unsafe {
                         ptr::copy(
                             evicted_bs_i_ptr.add(1),
                             evicted_bs_i_ptr,
-                            bs_i - evicted_bs_i,
+                            bs_i_sub_1 - evicted_bs_i,
                         );
                     }
-                    self.bs_index[bs_i] = self.tail;
+                    self.bs_index[bs_i_sub_1] = self.tail;
                 }
             }
 
@@ -215,7 +215,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() })
     }
 
-    /// Ok(kv_i, bs_index_i clamped to CAP - 1)
+    /// Ok(kv_i, bs_index_i)
     ///
     /// Err(bs_index_i)
     fn get_index_of<Q: Ord>(&self, k: &Q) -> Result<(I, usize), usize>
@@ -231,7 +231,6 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
                 probe.borrow().cmp(k)
             })
             .map(|bs_i| (self.bs_index[bs_i], bs_i))
-            .map_err(|bs_i| if CAP == 0 { 0 } else { cmp::min(bs_i, CAP - 1) })
     }
 
     /// Get reference to value without updating the entry to most-recently-used slot

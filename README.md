@@ -34,3 +34,5 @@ where `N` is number of elements:
 - Insertion: `O(log N)` lookup using the sorted index + `O(N)` to modify the sorted index (bitwise-copy of index types similar to `Vec`)
 - Deletion: `O(log N)` lookup using the sorted index + `O(N)` to modify the sorted index (bitwise-copy of index types similar to `Vec`)
 - Length fetching: `O(1)` since it's stored in the struct
+- Retrieving MRU element: `O(1)` using `.iter().next()`
+- Retrieving LRU element: `O(1)` using `.iter().next_back()`

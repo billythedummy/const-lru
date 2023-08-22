@@ -9,6 +9,8 @@ repository = "https://github.com/billythedummy/const-lru.git"
 keywords = ["lru", "cache", "const-generics", "data-structure", "no_std"]
 categories = ["caching", "data-structures", "no-std"]
 
+include = ["/src", "/tests", "/README.md"]
+
 [dependencies]
 num-traits = { version = ">=0.2", default-features = false }
 
