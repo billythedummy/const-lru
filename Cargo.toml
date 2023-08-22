@@ -11,7 +11,7 @@ keywords = ["lru", "cache", "const-generics", "data-structure", "no_std"]
 categories = ["algorithms", "caching", "data-structures", "no-std"]
 description = "A simple no_std, non-hashing, constant-capacity, constant-memory-usage LRU cache."
 
-include = ["/src", "/tests", "/README.md"]
+include = ["/src", "/tests", "/benches", "/README.md"]
 
 [dependencies]
 num-traits = { version = ">=0.2", default-features = false }
