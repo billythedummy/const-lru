@@ -4,7 +4,7 @@ use crate::ConstLru;
 
 use super::double_ended_iter_cursors::DoubleEndedIterCursors;
 
-/// Iterates through the keys and mutable values of the ConstLru from most-recently-used to least-recently-used
+/// Iterates through the keys and mutable values of the `ConstLru` from most-recently-used to least-recently-used
 ///
 /// Does not change the LRU order of the elements.
 pub struct IterMut<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> {
