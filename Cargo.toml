@@ -8,6 +8,7 @@ homepage = "https://github.com/billythedummy/const-lru"
 repository = "https://github.com/billythedummy/const-lru.git"
 keywords = ["lru", "cache", "const-generics", "data-structure", "no_std"]
 categories = ["caching", "data-structures", "no-std"]
+description = "A simple no_std, non-hashing, constant-capacity, constant-memory-usage LRU cache."
 
 include = ["/src", "/tests", "/README.md"]
 
