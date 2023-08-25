@@ -46,6 +46,30 @@ impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Insert<K, V>
     }
 }
 
+pub trait Remove<K, V> {
+    fn remove_by_key(&mut self, k: &K) -> Option<V>;
+}
+
+impl<K: Eq + Hash, V, S: BuildHasher> Remove<K, V> for HashMap<K, V, S> {
+    fn remove_by_key(&mut self, k: &K) -> Option<V> {
+        self.remove(k)
+    }
+}
+
+impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Remove<K, V> for ConstLru<K, V, CAP, I> {
+    fn remove_by_key(&mut self, k: &K) -> Option<V> {
+        self.remove(k)
+    }
+}
+
+impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Remove<K, V>
+    for Box<ConstLru<K, V, CAP, I>>
+{
+    fn remove_by_key(&mut self, k: &K) -> Option<V> {
+        self.remove(k)
+    }
+}
+
 pub trait CreateNew {
     fn create_new() -> Self;
 }

@@ -65,6 +65,7 @@ fn one_cap_remove() {
     let mut c: ConstLru<u32, u64, 1, u8> = ConstLru::new();
     c.insert(ENTRY.0, ENTRY.1);
     assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    assert!(c.get(&ENTRY.0).is_none());
     assert!(c.is_empty());
 }
 

@@ -45,6 +45,8 @@ pub fn u8_insert_hashmap(c: &mut Criterion) {
 // SIGSEGV: invalid memory reference
 // Probably out of stack
 
+// TODO: figure out why BigStruct insert is 2x faster than u8
+
 // 57 ns
 pub fn bigstruct_insert_const_lru(c: &mut Criterion) {
     bench_insert::<Box<ConstLru<BigStruct, BigStruct, 255, u8>>, _, _>(

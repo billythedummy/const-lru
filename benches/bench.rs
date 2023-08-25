@@ -12,11 +12,16 @@ use lru_to_mru::{
     bigstruct_get_lru_to_mru_hashmap, u8_get_lru_to_mru_const_lru,
     u8_get_lru_to_mru_const_lru_i_usize, u8_get_lru_to_mru_hashmap,
 };
+use remove::{
+    bigstruct_remove_const_lru, bigstruct_remove_const_lru_i_usize, bigstruct_remove_hashmap,
+    u8_remove_const_lru, u8_remove_const_lru_i_usize, u8_remove_hashmap,
+};
 
 mod common;
 mod get_mru;
 mod insert;
 mod lru_to_mru;
+mod remove;
 
 criterion_group!(
     u8_get_lru_to_mru,
@@ -57,6 +62,19 @@ criterion_group!(
     bigstruct_insert_hashmap
 );
 
+criterion_group!(
+    u8_remove,
+    u8_remove_const_lru,
+    u8_remove_const_lru_i_usize,
+    u8_remove_hashmap
+);
+criterion_group!(
+    bigstruct_remove,
+    bigstruct_remove_const_lru,
+    bigstruct_remove_const_lru_i_usize,
+    bigstruct_remove_hashmap
+);
+
 criterion_main!(
     u8_get_lru_to_mru,
     bigstruct_get_lru_to_mru,
@@ -64,4 +82,6 @@ criterion_main!(
     bigstruct_get_mru,
     u8_insert,
     bigstruct_insert,
+    u8_remove,
+    bigstruct_remove,
 );

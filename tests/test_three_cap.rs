@@ -156,6 +156,7 @@ fn remove_only() {
     let mut c: ConstLru<u32, u64, 3, u8> = ConstLru::new();
     c.insert(ENTRY.0, ENTRY.1);
     assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    assert!(c.get(&ENTRY.0).is_none());
     assert!(c.is_empty());
 }
 
@@ -167,6 +168,7 @@ fn remove_not_full() {
     c.insert(ENTRY.0, ENTRY.1);
     c.insert(OTHER.0, OTHER.1);
     assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    assert!(c.get(&ENTRY.0).is_none());
     assert_eq!(*c.get(&OTHER.0).unwrap(), OTHER.1);
 }
 
@@ -180,6 +182,7 @@ fn remove_full() {
         c.insert(k, v);
     }
     assert_eq!(c.remove(&ENTRY.0).unwrap(), ENTRY.1);
+    assert!(c.get(&ENTRY.0).is_none());
     for (k, v) in OTHERS {
         assert_eq!(*c.get(&k).unwrap(), v);
     }
