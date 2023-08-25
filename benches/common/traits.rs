@@ -37,3 +37,33 @@ impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Insert<K, V> for ConstL
         self.insert(k, v);
     }
 }
+
+impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Insert<K, V>
+    for Box<ConstLru<K, V, CAP, I>>
+{
+    fn insert_no_ret(&mut self, k: K, v: V) {
+        self.insert(k, v);
+    }
+}
+
+pub trait CreateNew {
+    fn create_new() -> Self;
+}
+
+impl<K, V> CreateNew for HashMap<K, V> {
+    fn create_new() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V, const CAP: usize, I: Unsigned + PrimInt> CreateNew for ConstLru<K, V, CAP, I> {
+    fn create_new() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V, const CAP: usize, I: Unsigned + PrimInt> CreateNew for Box<ConstLru<K, V, CAP, I>> {
+    fn create_new() -> Self {
+        Box::new(ConstLru::new())
+    }
+}
