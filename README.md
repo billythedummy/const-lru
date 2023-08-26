@@ -21,10 +21,10 @@ use const_lru::ConstLru;
 use core::mem;
 
 assert_eq!(mem::align_of::<ConstLru<u8, u8, 255>>(), 8);
-assert_eq!(mem::size_of::<ConstLru<u8, u8, 255>>(), 12_784);
+assert_eq!(mem::size_of::<ConstLru<u8, u8, 255>>(), 10_744);
 
 assert_eq!(mem::align_of::<ConstLru<u8, u8, 255, u8>>(), 1);
-assert_eq!(mem::size_of::<ConstLru<u8, u8, 255, u8>>(), 2_044);
+assert_eq!(mem::size_of::<ConstLru<u8, u8, 255, u8>>(), 1_789);
 ```
 
 ## Time complexity

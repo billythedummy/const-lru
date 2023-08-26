@@ -1,4 +1,5 @@
 pub mod double_ended_iter_cursors;
+pub mod in_order_bst;
 pub mod into_iter;
 pub mod iter;
 pub mod iter_key_order;

@@ -4,7 +4,6 @@
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::mem::MaybeUninit;
-use core::ptr;
 use num_traits::{PrimInt, Unsigned};
 
 mod iters;
@@ -60,9 +59,6 @@ pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
     /// - morris traversal, which requires mut reference to change right links
     parents: [I; CAP],
 
-    /// binary search index
-    bs_index: [I; CAP],
-
     /// disregard if value == CAP
     nexts: [I; CAP],
 
@@ -112,7 +108,6 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
             lefts: [cap; CAP],
             rights: [cap; CAP],
             parents: [cap; CAP],
-            bs_index: [I::zero(); CAP],
             nexts,
             prevs,
             keys: unsafe { MaybeUninit::uninit().assume_init() },
@@ -204,24 +199,6 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         IterMut::new(self)
     }
 
-    /// Creates an iterator that iterates through the keys and values of the `ConstLru` in the order of its keys
-    ///
-    /// Does not change the LRU order of the elements.
-    ///
-    /// Double-ended: reversing iterates from descending order of its keys
-    pub fn iter_key_order(&self) -> IterKeyOrder<K, V, CAP, I> {
-        IterKeyOrder::new(self)
-    }
-
-    /// Creates an iterator that iterates through the keys and mutable values of the `ConstLru` in the order of its keys
-    ///
-    /// Does not change the LRU order of the elements, even if mutated.
-    ///
-    /// Double-ended: reversing iterates from descending order of its keys
-    pub fn iter_key_order_mut(&mut self) -> IterKeyOrderMut<K, V, CAP, I> {
-        IterKeyOrderMut::new(self)
-    }
-
     /// Clears the `ConstLru`, removing all key-value pairs.
     pub fn clear(&mut self) {
         *self = Self::new();
@@ -265,8 +242,8 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         }
 
         // case-1: existing
-        let bs_i = match self.get_index_of(&k) {
-            Ok((index, _)) => {
+        let (parent_index, parent_dir) = match self.find_in_bst(&k) {
+            Ok(index) => {
                 let old_v = unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() };
                 let old_v_out = core::mem::replace(old_v, v);
                 self.move_to_head(index);
@@ -281,37 +258,13 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             let t = self.tail.to_usize().unwrap();
             let evicted_k = unsafe { self.keys[t].assume_init_read() };
             let evicted_v = unsafe { self.values[t].assume_init_read() };
-            let (_should_be_t, evicted_bs_i) = self.get_index_of(&evicted_k).unwrap();
+            self.remove_from_bst(self.tail);
+
+            // recalculate (parent_index, parent_dir) since tail deletion wouldve modified tree
+            let (parent_index_recalc, parent_dir_recalc) = self.find_in_bst(&k).err().unwrap();
             self.keys[t].write(k);
             self.values[t].write(v);
-
-            match bs_i.cmp(&evicted_bs_i) {
-                // nothing to be done, bs_index[bs_i] already == tail
-                Ordering::Equal => (),
-                Ordering::Less => {
-                    // shift everything between [bs_i, evicted_bs_i) right
-                    // then insert at bs_i
-                    let bs_i_ptr: *mut I = &mut self.bs_index[bs_i];
-                    unsafe {
-                        ptr::copy(bs_i_ptr, bs_i_ptr.add(1), evicted_bs_i - bs_i);
-                    }
-                    self.bs_index[bs_i] = self.tail;
-                }
-                Ordering::Greater => {
-                    // shift everything between (evicted_bs_i, bs_i - 1] left
-                    // then insert at bs_i - 1
-                    let evicted_bs_i_ptr: *mut I = &mut self.bs_index[evicted_bs_i];
-                    let bs_i_sub_1 = bs_i - 1;
-                    unsafe {
-                        ptr::copy(
-                            evicted_bs_i_ptr.add(1),
-                            evicted_bs_i_ptr,
-                            bs_i_sub_1 - evicted_bs_i,
-                        );
-                    }
-                    self.bs_index[bs_i_sub_1] = self.tail;
-                }
-            }
+            self.insert_into_bst(self.tail, (parent_index_recalc, parent_dir_recalc));
 
             self.move_to_head(self.tail);
             return Some(InsertReplaced::LruEvicted(evicted_k, evicted_v));
@@ -329,19 +282,10 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         self.keys[f].write(k);
         self.values[f].write(v);
 
-        let l = self.len.to_usize().unwrap();
-        if bs_i < l {
-            // shift everything between [bs_i, len) right
-            let bs_i_ptr: *mut I = &mut self.bs_index[bs_i];
-            unsafe {
-                ptr::copy(bs_i_ptr, bs_i_ptr.add(1), l - bs_i);
-            }
-        }
-        self.bs_index[bs_i] = free_index;
-
-        self.len = self.len + I::one();
+        self.insert_into_bst(self.tail, (parent_index, parent_dir));
 
         self.move_to_head(self.tail);
+        self.len = self.len + I::one();
         None
     }
 
@@ -350,7 +294,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     where
         K: Borrow<Q>,
     {
-        let (index, bs_i) = self.get_index_of(k).ok()?;
+        let index = self.find_in_bst(k).ok()?;
         let i = index.to_usize().unwrap();
 
         unsafe {
@@ -375,13 +319,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             self.nexts[t] = index;
         }
 
-        let l = self.len().to_usize().unwrap();
-        let bs_ptr: *mut I = &mut self.bs_index[bs_i];
-        unsafe {
-            // shift everything left to fill bs_i
-            ptr::copy(bs_ptr.add(1), bs_ptr, l - bs_i - 1);
-        }
-
+        self.remove_from_bst(index);
         self.len = self.len - I::one();
         Some(val)
     }
@@ -393,7 +331,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     where
         K: Borrow<Q>,
     {
-        let (index, _) = self.get_index_of(k).ok()?;
+        let index = self.find_in_bst(k).ok()?;
         self.move_to_head(index);
         Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_ref() })
     }
@@ -405,27 +343,9 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     where
         K: Borrow<Q>,
     {
-        let (index, _) = self.get_index_of(k).ok()?;
+        let index = self.find_in_bst(k).ok()?;
         self.move_to_head(index);
         Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() })
-    }
-
-    /// Ok(kv_i, bs_index_i)
-    ///
-    /// Err(bs_index_i)
-    fn get_index_of<Q: Ord>(&self, k: &Q) -> Result<(I, usize), usize>
-    where
-        K: Borrow<Q>,
-    {
-        let l = self.len().to_usize().unwrap();
-        let valid_bs_index = self.bs_index.get(0..l).unwrap();
-        valid_bs_index
-            .binary_search_by(|probe_index| {
-                let p = probe_index.to_usize().unwrap();
-                let probe = unsafe { self.keys[p].assume_init_ref() };
-                probe.borrow().cmp(k)
-            })
-            .map(|bs_i| (self.bs_index[bs_i], bs_i))
     }
 
     /// Ok(kv_i) if found
@@ -537,12 +457,30 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     /// Returns the node's in-order successor: leftmost child of right subtree
     /// return value always guaranteed to != CAP
     fn find_in_order_successor(&self, node_index: I) -> I {
-        // right subtree root
-        let mut curr = self.rights[node_index.to_usize().unwrap()];
+        let right_subtree_root = self.rights[node_index.to_usize().unwrap()];
+        self.find_leftmost(right_subtree_root)
+    }
+
+    /// Assumes node is a valid node
+    /// Returns itself if no left children
+    fn find_leftmost(&self, node_index: I) -> I {
+        let mut curr = node_index;
         let mut left = self.lefts[curr.to_usize().unwrap()];
         while left != self.cap() {
             curr = left;
             left = self.lefts[curr.to_usize().unwrap()];
+        }
+        curr
+    }
+
+    /// Assumes node is a valid node
+    /// Returns itself if no right children
+    fn find_rightmost(&self, node_index: I) -> I {
+        let mut curr = node_index;
+        let mut right = self.rights[curr.to_usize().unwrap()];
+        while right != self.cap() {
+            curr = right;
+            right = self.rights[curr.to_usize().unwrap()];
         }
         curr
     }
@@ -576,7 +514,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     where
         K: Borrow<Q>,
     {
-        let (index, _) = self.get_index_of(k).ok()?;
+        let index = self.find_in_bst(k).ok()?;
         Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_ref() })
     }
 
@@ -587,8 +525,26 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     where
         K: Borrow<Q>,
     {
-        let (index, _) = self.get_index_of(k).ok()?;
+        let index = self.find_in_bst(k).ok()?;
         Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() })
+    }
+
+    /// Creates an iterator that iterates through the keys and values of the `ConstLru` in the order of its keys
+    ///
+    /// Does not change the LRU order of the elements.
+    ///
+    /// Double-ended: reversing iterates from descending order of its keys
+    pub fn iter_key_order(&self) -> IterKeyOrder<K, V, CAP, I> {
+        IterKeyOrder::new(self)
+    }
+
+    /// Creates an iterator that iterates through the keys and mutable values of the `ConstLru` in the order of its keys
+    ///
+    /// Does not change the LRU order of the elements, even if mutated.
+    ///
+    /// Double-ended: reversing iterates from descending order of its keys
+    pub fn iter_key_order_mut(&mut self) -> IterKeyOrderMut<K, V, CAP, I> {
+        IterKeyOrderMut::new(self)
     }
 }
 
@@ -602,7 +558,6 @@ impl<K: Clone, V: Clone, const CAP: usize, I: PrimInt + Unsigned> Clone for Cons
             lefts: self.lefts,
             rights: self.rights,
             parents: self.parents,
-            bs_index: self.bs_index,
             nexts: self.nexts,
             prevs: self.prevs,
             keys: unsafe { MaybeUninit::uninit().assume_init() },
@@ -677,45 +632,37 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> TryFrom<[(K, V); CAP]>
             I::zero()
         };
 
+        // write all values in first so that drop self cleans up correctly
         for (i, (k, v)) in entries.into_iter().enumerate() {
             res.keys[i].write(k);
             res.values[i].write(v);
         }
 
-        for (i, val) in res.bs_index.iter_mut().enumerate() {
-            *val = I::from(i).unwrap();
-        }
-        res.bs_index.sort_unstable_by(|a, b| {
-            let k_a = unsafe { res.keys[a.to_usize().unwrap()].assume_init_ref() };
-            let k_b = unsafe { res.keys[b.to_usize().unwrap()].assume_init_ref() };
-            k_a.cmp(k_b)
-        });
-
-        if CAP > 1 {
-            for w in res.bs_index.windows(2) {
-                let index_1 = w[0];
-                let i1 = index_1.to_usize().unwrap();
-                let i2 = w[1].to_usize().unwrap();
-                let k1 = unsafe { res.keys[i1].assume_init_ref() };
-                let k2 = unsafe { res.keys[i2].assume_init_ref() };
-                if k1 == k2 {
+        // build the bst element-by-element
+        for i in 0..CAP {
+            let k = unsafe { res.keys[i].assume_init_ref() };
+            let (parent_index, parent_dir) = match res.find_in_bst(k) {
+                Ok(existing) => {
                     // remove from list so no double free
-                    res.unlink_node(index_1);
+                    res.unlink_node(existing);
                     res.len = res.len - I::one();
 
                     // cleanup value
-                    unsafe { res.values[i1].assume_init_drop() };
-                    let k_copied_out = unsafe { res.keys[i1].assume_init_read() };
+                    let e = existing.to_usize().unwrap();
+                    unsafe { res.values[e].assume_init_drop() };
+                    let k_copied_out = unsafe { res.keys[e].assume_init_read() };
                     return Err(DuplicateKeysError(k_copied_out));
                 }
-            }
+                Err(parent_info) => parent_info,
+            };
+            res.insert_into_bst(I::from(i).unwrap(), (parent_index, parent_dir));
         }
 
         Ok(res)
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 enum BstChild {
     Left,
     Right,
