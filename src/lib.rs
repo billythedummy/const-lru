@@ -29,6 +29,11 @@ use iters::iter_maybe_uninit::IterMaybeUninit;
 pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
     len: I,
 
+    /// root of the bst
+    ///
+    /// CAP if empty
+    root: I,
+
     /// head is index of most recently used
     ///
     /// can be any value if cache is empty
@@ -41,6 +46,19 @@ pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
     ///
     /// tail is always < CAP
     tail: I,
+
+    /// disregard if value == CAP
+    lefts: [I; CAP],
+
+    /// disregard if value == CAP
+    rights: [I; CAP],
+
+    /// disregard if value == CAP
+    /// Saving parent links results in memory overhead but
+    /// enables in-order traversal without either
+    /// - use of stack, which requires dynamic allocation,
+    /// - morris traversal, which requires mut reference to change right links
+    parents: [I; CAP],
 
     /// binary search index
     bs_index: [I; CAP],
@@ -88,8 +106,12 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
         Self {
             len: I::zero(),
+            root: cap,
             head: cap,
             tail: I::zero(),
+            lefts: [cap; CAP],
+            rights: [cap; CAP],
+            parents: [cap; CAP],
             bs_index: [I::zero(); CAP],
             nexts,
             prevs,
@@ -406,6 +428,147 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             .map(|bs_i| (self.bs_index[bs_i], bs_i))
     }
 
+    /// Ok(kv_i) if found
+    ///
+    /// Err(parent_leaf_kv_i, should_this_node_be_inserted_as_parent's_left_or_right_child) if not found
+    /// parent_leaf_kv_i = CAP and .1 is disregarded if tree is empty
+    fn find_in_bst<Q: Ord>(&self, k: &Q) -> Result<I, (I, BstChild)>
+    where
+        K: Borrow<Q>,
+    {
+        if self.root == self.cap() {
+            return Err((self.cap(), BstChild::Left));
+        }
+        let mut curr = self.root;
+        loop {
+            let parent_dir;
+            let parent_index = curr;
+            let i = curr.to_usize().unwrap();
+            let curr_k = unsafe { self.keys[i].assume_init_ref() };
+            match curr_k.borrow().cmp(k) {
+                Ordering::Equal => return Ok(curr),
+                Ordering::Less => {
+                    curr = self.rights[i];
+                    parent_dir = BstChild::Right;
+                }
+                Ordering::Greater => {
+                    curr = self.lefts[i];
+                    parent_dir = BstChild::Left;
+                }
+            }
+            if curr == self.cap() {
+                return Err((parent_index, parent_dir));
+            }
+        }
+    }
+
+    /// Inserts the node as the `parent_dir` child of parent
+    /// node can be newly initialized leaf or the root of a subtree
+    /// (parent_index, parent_dir) should be that returned by find_in_bst() or unlink_bst_node_from_parent()
+    ///
+    /// if parent_index == CAP, inserts at root
+    ///
+    /// Does not modify the node's own left + right indices
+    ///
+    /// TODO: red-black
+    fn insert_into_bst(&mut self, node_index: I, (parent_index, parent_dir): (I, BstChild)) {
+        let node_i = node_index.to_usize().unwrap();
+        self.parents[node_i] = parent_index;
+        // base: if parent_index is CAP, replace root
+        if parent_index == self.cap() {
+            self.root = node_index;
+            return;
+        }
+        let parent_i = parent_index.to_usize().unwrap();
+        match parent_dir {
+            BstChild::Left => self.lefts[parent_i] = node_index,
+            BstChild::Right => self.rights[parent_i] = node_index,
+        }
+    }
+
+    /// TODO: red-black
+    fn remove_from_bst(&mut self, node_index: I) {
+        let node_i = node_index.to_usize().unwrap();
+        let parent = self.parents[node_i];
+        let left = self.lefts[node_i];
+        let right = self.rights[node_i];
+        if left == self.cap() && right == self.cap() {
+            // case-1: no children, just clear
+            self.unlink_bst_node_from_parent(node_index);
+            if node_index == self.root {
+                self.root = self.cap();
+            }
+        } else {
+            let (replacement_index, parent_dir) = if left != self.cap() && right != self.cap() {
+                let in_order_successor = self.find_in_order_successor(node_index);
+                let (ios_parent, ios_parent_dir) =
+                    self.unlink_bst_node_from_parent(in_order_successor);
+                // in_order_successor must have no left children,
+                // so replace ios with its right child
+                let ios = in_order_successor.to_usize().unwrap();
+                let ios_right = self.rights[ios];
+                if ios_right != self.cap() {
+                    self.unlink_bst_node_from_parent(ios_right);
+                    self.insert_into_bst(ios_right, (ios_parent, ios_parent_dir));
+                }
+                // at this point ios has no left, right, parent
+                // replace ios' left and right with node's left and right
+                self.lefts[ios] = left;
+                // must compute right again since mightve changed with ios_right modification above
+                self.rights[ios] = self.rights[node_i];
+                let (_, parent_dir) = self.unlink_bst_node_from_parent(node_index);
+                (in_order_successor, parent_dir)
+            } else {
+                // only 1 child, replace node with child
+                let (_, parent_dir) = self.unlink_bst_node_from_parent(node_index);
+                let replacement_index = if left != self.cap() { left } else { right };
+                (replacement_index, parent_dir)
+            };
+            self.insert_into_bst(replacement_index, (parent, parent_dir));
+        }
+
+        // clear the removed node's left, right, parent
+        self.parents[node_i] = self.cap();
+        self.lefts[node_i] = self.cap();
+        self.rights[node_i] = self.cap();
+    }
+
+    /// Assumes node has a non-empty right-subtree
+    /// Returns the node's in-order successor: leftmost child of right subtree
+    /// return value always guaranteed to != CAP
+    fn find_in_order_successor(&self, node_index: I) -> I {
+        // right subtree root
+        let mut curr = self.rights[node_index.to_usize().unwrap()];
+        let mut left = self.lefts[curr.to_usize().unwrap()];
+        while left != self.cap() {
+            curr = left;
+            left = self.lefts[curr.to_usize().unwrap()];
+        }
+        curr
+    }
+
+    /// set node's parent's left/right link pointing to node to CAP, and
+    /// set node's parent link to CAP
+    /// Returns (parent_kv_i, was_deleted_node_parent's_left_or_right_child)
+    /// parent_kv_i == CAP if node was root
+    fn unlink_bst_node_from_parent(&mut self, node_index: I) -> (I, BstChild) {
+        let node_i = node_index.to_usize().unwrap();
+        let parent = self.parents[node_i];
+        self.parents[node_i] = self.cap();
+        if parent == self.cap() {
+            return (parent, BstChild::Left);
+        }
+        let p = parent.to_usize().unwrap();
+        let parent_dir = if self.lefts[p] == node_index {
+            self.lefts[p] = self.cap();
+            BstChild::Left
+        } else {
+            self.rights[p] = self.cap();
+            BstChild::Right
+        };
+        (parent, parent_dir)
+    }
+
     /// Returns a reference to the value corresponding to the key without updating the entry to most-recently-used slot
     ///
     /// To update to most-recently-used, use [`Self::get`]
@@ -433,8 +596,12 @@ impl<K: Clone, V: Clone, const CAP: usize, I: PrimInt + Unsigned> Clone for Cons
     fn clone(&self) -> Self {
         let mut res = Self {
             len: self.len,
+            root: self.root,
             head: self.head,
             tail: self.tail,
+            lefts: self.lefts,
+            rights: self.rights,
+            parents: self.parents,
             bs_index: self.bs_index,
             nexts: self.nexts,
             prevs: self.prevs,
@@ -546,4 +713,10 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> TryFrom<[(K, V); CAP]>
 
         Ok(res)
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum BstChild {
+    Left,
+    Right,
 }
