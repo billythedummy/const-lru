@@ -52,20 +52,26 @@ impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
         }
         Some(res)
     }
+
+    // TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html when it lands in stable
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(CAP))
+    }
 }
 
-/*
-impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
+impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
     for IterKeyOrderMut<'a, K, V, CAP, I>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.has_ended() {
-            return None;
-        }
         // decrement then consume
-        self.from_largest_bsi = self.from_largest_bsi - I::one();
-        let res = self.get_entry_mut(self.from_largest_bsi);
+        while self.traverser.get_from_largest_state() != InOrderTraversalState::This {
+            if self.traverser.has_ended() {
+                return None;
+            }
+            self.traverser.retreat_from_largest(self.const_lru);
+        }
+        let res = self.get_entry_mut(self.traverser.get_from_largest_current());
+        self.traverser.retreat_from_largest(self.const_lru);
         Some(res)
     }
 }
-*/

@@ -22,9 +22,9 @@ fn zero_cap_iters() {
     assert!(c.iter_mut().next().is_none());
     assert!(c.iter_mut().next_back().is_none());
     assert!(c.iter_key_order().next().is_none());
-    //assert!(c.iter_key_order().next_back().is_none());
+    assert!(c.iter_key_order().next_back().is_none());
     assert!(c.iter_key_order_mut().next().is_none());
-    //assert!(c.iter_key_order_mut().next_back().is_none());
+    assert!(c.iter_key_order_mut().next_back().is_none());
     let c2 = c.clone();
     assert!(c.into_iter().next().is_none());
     assert!(c2.into_iter().next_back().is_none());

@@ -38,7 +38,7 @@ impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
             return None;
         }
         // consume then increment
-        // assert!(self.traverser.from_smallest().state() == InOrderTraversalState::Left);
+        // assert!(self.traverser.get_from_smallest_state() == InOrderTraversalState::Left);
         let res = self.get_entry(self.traverser.get_from_smallest_current());
         self.traverser.advance_from_smallest(self.const_lru);
         while self.traverser.get_from_smallest_state() != InOrderTraversalState::Left {
@@ -49,20 +49,26 @@ impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> Iterator
         }
         Some(res)
     }
+
+    // TODO: look into https://doc.rust-lang.org/std/iter/trait.TrustedLen.html when it lands in stable
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(CAP))
+    }
 }
 
-/*
-impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
+impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator
     for IterKeyOrder<'a, K, V, CAP, I>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.has_ended() {
-            return None;
-        }
         // decrement then consume
-        self.from_largest_bsi = self.from_largest_bsi - I::one();
-        let res = self.get_entry(self.from_largest_bsi);
+        while self.traverser.get_from_largest_state() != InOrderTraversalState::This {
+            if self.traverser.has_ended() {
+                return None;
+            }
+            self.traverser.retreat_from_largest(self.const_lru);
+        }
+        let res = self.get_entry(self.traverser.get_from_largest_current());
+        self.traverser.retreat_from_largest(self.const_lru);
         Some(res)
     }
 }
-*/

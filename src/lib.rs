@@ -420,7 +420,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             }
         } else {
             let (replacement_index, parent_dir) = if left != self.cap() && right != self.cap() {
-                let in_order_successor = self.find_in_order_successor(node_index);
+                let in_order_successor = self.find_in_order_successor_right_subtree(node_index);
                 let (ios_parent, ios_parent_dir) =
                     self.unlink_bst_node_from_parent(in_order_successor);
                 // in_order_successor must have no left children,
@@ -456,7 +456,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     /// Assumes node has a non-empty right-subtree
     /// Returns the node's in-order successor: leftmost child of right subtree
     /// return value always guaranteed to != CAP
-    fn find_in_order_successor(&self, node_index: I) -> I {
+    fn find_in_order_successor_right_subtree(&self, node_index: I) -> I {
         let right_subtree_root = self.rights[node_index.to_usize().unwrap()];
         self.find_leftmost(right_subtree_root)
     }
@@ -473,16 +473,16 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         curr
     }
 
-    /// Assumes node is a valid node
-    /// Returns itself if no right children
-    fn find_rightmost(&self, node_index: I) -> I {
+    /// Assumes node has a valid parent
+    /// Returns CAP if no predecessor ie node is leftmost node
+    fn find_in_order_predecessor_ancestor(&self, node_index: I) -> I {
         let mut curr = node_index;
-        let mut right = self.rights[curr.to_usize().unwrap()];
-        while right != self.cap() {
-            curr = right;
-            right = self.rights[curr.to_usize().unwrap()];
+        let mut parent = self.parents[curr.to_usize().unwrap()];
+        while self.rights[parent.to_usize().unwrap()] != curr && parent != self.cap() {
+            curr = parent;
+            parent = self.parents[curr.to_usize().unwrap()];
         }
-        curr
+        parent
     }
 
     /// set node's parent's left/right link pointing to node to CAP, and

@@ -117,7 +117,7 @@ fn empty_iter_key_order() {
     let c: ConstLru<u8, u64, 1, u8> = ConstLru::new();
     let mut iter = c.iter_key_order();
     assert_eq!(iter.next(), None);
-    // assert_eq!(iter.next_back(), None);
+    assert_eq!(iter.next_back(), None);
 }
 
 #[test]
@@ -130,7 +130,6 @@ fn iter_key_order_fwd_only() {
     }
 }
 
-/*
 #[test]
 fn iter_key_order_rev_only() {
     let c = create_const_lru();
@@ -153,14 +152,13 @@ fn iter_key_order_mitm() {
     assert!(iter.next().is_none());
     assert!(iter.next_back().is_none());
 }
-*/
 
 #[test]
 fn empty_iter_key_order_mut() {
     let mut c: ConstLru<u8, u64, 1, u8> = ConstLru::new();
     let mut iter = c.iter_key_order_mut();
     assert_eq!(iter.next(), None);
-    // assert_eq!(iter.next_back(), None);
+    assert_eq!(iter.next_back(), None);
 }
 
 #[test]
@@ -177,7 +175,6 @@ fn iter_key_order_mut_fwd_only() {
     }
 }
 
-/*
 #[test]
 fn iter_key_order_mut_rev_only() {
     let mut c = create_const_lru();
@@ -216,4 +213,3 @@ fn iter_key_order_mut_mitm() {
         assert_eq!(*c.get_untouched(&k).unwrap(), v + 1);
     }
 }
-*/
