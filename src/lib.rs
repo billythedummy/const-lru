@@ -1,4 +1,4 @@
-#![no_std]
+//#![no_std]
 #![doc = include_str!("../README.md")]
 
 use core::borrow::Borrow;
@@ -26,6 +26,12 @@ use iters::iter_maybe_uninit::IterMaybeUninit;
 /// - `I`. Type of the index used. Must be an unsigned primitive type with bitwidth <= `usize`'s bitwidth.
 #[derive(Debug)]
 pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
+    /// TODO: 8x more space-efficient to use 1 bit to encode red-black tree color
+    /// but until https://github.com/rust-lang/rust/issues/76560 generic_const_exprs
+    /// and https://github.com/rust-lang/rust/issues/88581 int_roundings lands in stable
+    /// we can't do `rb_colors: [u8; CAP.div_ceil(8)],`
+    rb_colors: [RbColor; CAP],
+
     len: I,
 
     /// root of the bst
@@ -55,7 +61,8 @@ pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
     /// disregard if value == CAP
     /// Saving parent links results in memory overhead but
     /// enables in-order traversal without either
-    /// - use of stack, which requires dynamic allocation,
+    /// - recursion, which might stack overflow
+    /// - use of a stack, which requires dynamic allocation,
     /// - morris traversal, which requires mut reference to change right links
     parents: [I; CAP],
 
@@ -88,10 +95,8 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
         // [1, 2, ..., cap-1, cap]
         let mut nexts = [cap; CAP];
-        if CAP > 0 {
-            for (i, next) in nexts.iter_mut().enumerate().take(CAP - 1) {
-                *next = I::from(i + 1).unwrap();
-            }
+        for (i, next) in nexts.iter_mut().enumerate() {
+            *next = I::from(i + 1).unwrap();
         }
 
         // [cap, 0, 1, ..., cap-2]
@@ -101,6 +106,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         }
 
         Self {
+            rb_colors: [RbColor::Black; CAP],
             len: I::zero(),
             root: cap,
             head: cap,
@@ -181,6 +187,462 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         self.head = index;
     }
 
+    /// Returns rb color of the node at index, black if index == CAP
+    /// TODO: refactor this to use bitwise operators for 1-bit RbColor. See self.rb_colors doc comment.
+    fn get_rb_color(&self, index: I) -> RbColor {
+        if index == self.cap() {
+            return RbColor::Black;
+        }
+        self.rb_colors[index.to_usize().unwrap()]
+    }
+
+    /// Assumes index is valid
+    /// TODO: refactor this to use bitwise operators for 1-bit RbColor. See self.rb_colors doc comment.
+    fn set_rb_color(&mut self, index: I, new_color: RbColor) {
+        self.rb_colors[index.to_usize().unwrap()] = new_color;
+    }
+
+    /// Assumes parent is valid.
+    /// Inserts the node as the `parent_dir` child of parent.
+    /// This overwrites the parent links of node and the left/right link of parent
+    ///
+    /// Node can be:
+    /// - newly initialized leaf
+    /// - unlinked node
+    /// - CAP
+    ///
+    /// `(parent_index, parent_dir)` should be that returned by find_in_bst() or unlink_bst_node_from_parent()
+    ///
+    /// if `parent_index == CAP`, inserts at root
+    ///
+    /// Does not modify the node's own left + right indices
+    fn insert_bst_node(&mut self, node_index: I, (parent_index, parent_dir): (I, BstChild)) {
+        if node_index != self.cap() {
+            let node_i = node_index.to_usize().unwrap();
+            self.parents[node_i] = parent_index;
+        }
+        // if parent_index is CAP, replace root
+        if parent_index == self.cap() {
+            self.root = node_index;
+            return;
+        }
+        let p = parent_index.to_usize().unwrap();
+        match parent_dir {
+            BstChild::Left => self.lefts[p] = node_index,
+            BstChild::Right => self.rights[p] = node_index,
+        }
+    }
+
+    /// Assumes node has a non-empty right-subtree
+    /// Returns the node's in-order successor: leftmost child of right subtree
+    /// return value always guaranteed to != CAP
+    fn find_in_order_successor_right_subtree(&self, node_index: I) -> I {
+        let right_subtree_root = self.rights[node_index.to_usize().unwrap()];
+        self.find_leftmost(right_subtree_root)
+    }
+
+    /// Assumes node is a valid node
+    /// Returns itself if no left children
+    fn find_leftmost(&self, node_index: I) -> I {
+        let mut curr = node_index;
+        let mut left = self.lefts[curr.to_usize().unwrap()];
+        while left != self.cap() {
+            curr = left;
+            left = self.lefts[curr.to_usize().unwrap()];
+        }
+        curr
+    }
+
+    /// Assumes node has a valid parent
+    /// Returns CAP if no predecessor ie node is leftmost node
+    fn find_in_order_predecessor_ancestor(&self, node_index: I) -> I {
+        let mut curr = node_index;
+        let mut parent = self.parents[curr.to_usize().unwrap()];
+        while self.rights[parent.to_usize().unwrap()] != curr && parent != self.cap() {
+            curr = parent;
+            parent = self.parents[curr.to_usize().unwrap()];
+        }
+        parent
+    }
+
+    /// Assumes node is valid.
+    ///
+    /// Set node's parent's left/right link pointing to node to CAP, and
+    /// set node's parent link to CAP
+    ///
+    /// Returns (parent_kv_i, was_deleted_node_parent's_left_or_right_child)
+    ///
+    /// parent_kv_i == CAP if node was root
+    fn unlink_bst_node_from_parent(&mut self, node_index: I) -> (I, BstChild) {
+        let node_i = node_index.to_usize().unwrap();
+        let parent = self.parents[node_i];
+        self.parents[node_i] = self.cap();
+        // node is root node
+        if parent == self.cap() {
+            return (parent, BstChild::Left);
+        }
+        let p = parent.to_usize().unwrap();
+        let parent_dir = if self.lefts[p] == node_index {
+            self.lefts[p] = self.cap();
+            BstChild::Left
+        } else {
+            self.rights[p] = self.cap();
+            BstChild::Right
+        };
+        (parent, parent_dir)
+    }
+
+    /// x          o      
+    ///  \        / \
+    ///   o  ->  x   o
+    ///    \
+    ///     o
+    /// Assumes node has valid right child
+    fn left_rotate(&mut self, index: I) {
+        let i = index.to_usize().unwrap();
+        let right = self.rights[i];
+        let r = right.to_usize().unwrap();
+        let left_of_right = self.lefts[r];
+
+        if left_of_right != self.cap() {
+            self.unlink_bst_node_from_parent(left_of_right);
+        }
+        self.unlink_bst_node_from_parent(right);
+        let (parent, parent_dir) = self.unlink_bst_node_from_parent(index);
+
+        self.insert_bst_node(right, (parent, parent_dir));
+        self.insert_bst_node(left_of_right, (index, BstChild::Right));
+        self.insert_bst_node(index, (right, BstChild::Left));
+    }
+
+    /// hi cargo please stop parsing my 'o'
+    /// and throwing expected one of 8 possible tokens
+    ///     x       o      
+    ///    /       / \
+    ///   o   ->  o   x
+    ///  /
+    /// o   
+    /// Assumes node has valid right child
+    fn right_rotate(&mut self, index: I) {
+        let i = index.to_usize().unwrap();
+        let left = self.lefts[i];
+        let l = left.to_usize().unwrap();
+        let right_of_left = self.rights[l];
+
+        if right_of_left != self.cap() {
+            self.unlink_bst_node_from_parent(right_of_left);
+        }
+        self.unlink_bst_node_from_parent(left);
+        let (parent, parent_dir) = self.unlink_bst_node_from_parent(index);
+
+        self.insert_bst_node(left, (parent, parent_dir));
+        self.insert_bst_node(right_of_left, (index, BstChild::Left));
+        self.insert_bst_node(index, (left, BstChild::Right));
+    }
+
+    ///   x     B          
+    ///  /     / \
+    /// A  -> A   x
+    ///  \
+    ///   B
+    fn left_right_rotate(&mut self, index: I) {
+        let left = self.lefts[index.to_usize().unwrap()];
+        self.left_rotate(left);
+        self.right_rotate(index);
+    }
+
+    /// x        B
+    ///  \      / \
+    ///   A -> x   A
+    ///  /
+    /// B
+    fn right_left_rotate(&mut self, index: I) {
+        let right = self.rights[index.to_usize().unwrap()];
+        self.right_rotate(right);
+        self.left_rotate(index);
+    }
+
+    /// Insert a new leaf node into the red black tree
+    fn insert_rb(&mut self, node_index: I, parent_info: (I, BstChild)) {
+        self.insert_bst_node(node_index, parent_info);
+        self.set_rb_color(node_index, RbColor::Red);
+        let mut node = Some(node_index);
+        while let Some(n) = node {
+            node = self.insert_rb_fixup(n);
+        }
+    }
+
+    /// Returns next node to examine and potentially fixup (the grandparent)
+    /// Returns None if completed
+    fn insert_rb_fixup(&mut self, node: I) -> Option<I> {
+        // case-0: root
+        if node == self.root {
+            self.set_rb_color(node, RbColor::Black);
+            return None;
+        }
+        // not root, parent must exist
+        let n = node.to_usize().unwrap();
+        let parent = self.parents[n];
+        let parent_color = self.get_rb_color(parent);
+        let node_color = self.get_rb_color(node);
+        // no violation, we're done
+        if !(parent_color == RbColor::Red && node_color == RbColor::Red) {
+            return None;
+        }
+
+        // root always black -> if parent-child red violation then parent != root
+        // -> grandparent must exist
+        let p = parent.to_usize().unwrap();
+        let parent_dir = if self.lefts[p] == node {
+            BstChild::Left
+        } else {
+            BstChild::Right
+        };
+
+        let grandparent = self.parents[p];
+
+        let g = grandparent.to_usize().unwrap();
+        let (grandparent_dir, uncle) = if self.lefts[g] == parent {
+            (BstChild::Left, self.rights[g])
+        } else {
+            (BstChild::Right, self.lefts[g])
+        };
+        let uncle_color = self.get_rb_color(uncle);
+
+        // case-1: parent & uncle red -> recolor and check grandparent
+        if uncle_color == RbColor::Red {
+            self.set_rb_color(uncle, RbColor::Black);
+            self.set_rb_color(parent, RbColor::Black);
+            self.set_rb_color(grandparent, RbColor::Red);
+            return Some(grandparent);
+        }
+        // uncle is black
+
+        // case-2: inserted node is "inner grandchild" (triangle)
+        let is_right_left_inner_grandchild =
+            grandparent_dir == BstChild::Right && parent_dir == BstChild::Left;
+        let is_left_right_inner_grandchild =
+            grandparent_dir == BstChild::Left && parent_dir == BstChild::Right;
+        if is_right_left_inner_grandchild || is_left_right_inner_grandchild {
+            if is_right_left_inner_grandchild {
+                self.right_left_rotate(grandparent);
+            } else {
+                self.left_right_rotate(grandparent);
+            }
+            self.set_rb_color(node, RbColor::Black);
+            self.set_rb_color(grandparent, RbColor::Red);
+            return None;
+        }
+
+        // case-3: inserted node is "outer grandchild" (line)
+        let is_right_outer_grandchild =
+            grandparent_dir == BstChild::Right && parent_dir == BstChild::Right;
+        if is_right_outer_grandchild {
+            self.left_rotate(grandparent);
+        } else {
+            self.right_rotate(grandparent);
+        }
+        self.set_rb_color(parent, RbColor::Black);
+        self.set_rb_color(grandparent, RbColor::Red);
+        None
+    }
+
+    /// Assumes node is valid
+    ///
+    /// Deletes the given node from a bst, replacing it with
+    ///
+    /// - CAP if no children
+    /// - its only child if only 1 child
+    /// - its in-order successor if both children exist
+    ///
+    /// Returns ((parent, direction), deleted_node_color)
+    ///
+    /// (parent, direction) is that of the lowest modified parent. This is
+    ///
+    /// - CAP if node was root
+    /// - parent of node if no children or only 1 child and direction of the node wrt parent
+    /// - parent of in order successor if 2 children and direction of in order successor wrt parent
+    ///
+    /// deleted_node_color is
+    /// - color of deleted node if 1 or 0 children
+    /// - color of in order successor if 2 children
+    fn remove_rbt_node(&mut self, node_index: I) -> ((I, BstChild), RbColor) {
+        let node_i = node_index.to_usize().unwrap();
+        let parent = self.parents[node_i];
+        let left = self.lefts[node_i];
+        let right = self.rights[node_i];
+        let original_color = self.get_rb_color(node_index);
+        let lowest_modified_parent: (I, BstChild);
+        let deleted_color: RbColor;
+        if left == self.cap() && right == self.cap() {
+            // case-1: no children, just clear
+            lowest_modified_parent = self.unlink_bst_node_from_parent(node_index);
+            deleted_color = original_color;
+            if node_index == self.root {
+                self.root = self.cap();
+            }
+        } else {
+            let (replacement_index, parent_dir) = if left != self.cap() && right != self.cap() {
+                let in_order_successor = self.find_in_order_successor_right_subtree(node_index);
+                let (ios_parent, ios_parent_dir) =
+                    self.unlink_bst_node_from_parent(in_order_successor);
+                // in_order_successor must have no left children,
+                // so replace ios with its right child
+                let ios = in_order_successor.to_usize().unwrap();
+                let ios_right = self.rights[ios];
+                if ios_right != self.cap() {
+                    self.unlink_bst_node_from_parent(ios_right);
+                    self.insert_bst_node(ios_right, (ios_parent, ios_parent_dir));
+                }
+                // at this point ios has no left, right, parent
+                // replace ios' left and right with node's left and right
+                self.insert_bst_node(left, (in_order_successor, BstChild::Left));
+                // must compute right again since mightve changed with ios_right modification above
+                self.insert_bst_node(self.rights[node_i], (in_order_successor, BstChild::Right));
+
+                let (_, parent_dir) = self.unlink_bst_node_from_parent(node_index);
+
+                // recolor in_order_successor with original color for correct remove repairs
+                let ios_color = self.get_rb_color(in_order_successor);
+                self.set_rb_color(in_order_successor, original_color);
+
+                lowest_modified_parent = (ios_parent, ios_parent_dir);
+                deleted_color = ios_color;
+
+                (in_order_successor, parent_dir)
+            } else {
+                // only 1 child, replace node with child
+                let (parent, parent_dir) = self.unlink_bst_node_from_parent(node_index);
+                let replacement_index = if left != self.cap() { left } else { right };
+
+                lowest_modified_parent = (parent, parent_dir);
+                deleted_color = original_color;
+                (replacement_index, parent_dir)
+            };
+            self.insert_bst_node(replacement_index, (parent, parent_dir));
+        }
+
+        // clear the removed node's left, right, parent, reset to black
+        self.parents[node_i] = self.cap();
+        self.lefts[node_i] = self.cap();
+        self.rights[node_i] = self.cap();
+        self.set_rb_color(node_index, RbColor::Black);
+        (lowest_modified_parent, deleted_color)
+    }
+
+    /// Assumes node is valid
+    /// Removes a node from the red-black tree
+    fn remove_rb(&mut self, node_index: I) {
+        let (lowest_modified_parent, deleted_color) = self.remove_rbt_node(node_index);
+        if deleted_color == RbColor::Red {
+            return;
+        }
+        let mut lowest_modified_parent = Some(lowest_modified_parent);
+        while let Some(lmp) = lowest_modified_parent {
+            lowest_modified_parent = self.remove_rb_fixup(lmp);
+        }
+    }
+
+    fn remove_rb_fixup(&mut self, (parent, parent_dir): (I, BstChild)) -> Option<(I, BstChild)> {
+        // case-0: root -> color root black and done
+        if parent == self.cap() {
+            if self.root != self.cap() {
+                self.set_rb_color(self.root, RbColor::Black);
+            }
+            return None;
+        }
+
+        // not root, parent is a valid node
+        let p = parent.to_usize().unwrap();
+        let mut sibling = if let BstChild::Left = parent_dir {
+            self.rights[p]
+        } else {
+            self.lefts[p]
+        };
+
+        // case-1: red sibling ->
+        // recolor sibling and parent then rotate then fallthrough
+        if let RbColor::Red = self.get_rb_color(sibling) {
+            self.set_rb_color(sibling, RbColor::Black);
+            self.set_rb_color(parent, RbColor::Red);
+            if let BstChild::Left = parent_dir {
+                self.left_rotate(parent);
+            } else {
+                self.right_rotate(parent);
+            }
+            // update sibling and fallthrough since it will be one of cases below
+            sibling = if let BstChild::Left = parent_dir {
+                self.rights[p]
+            } else {
+                self.lefts[p]
+            };
+        }
+
+        // case-2+3: black sibling with 2 black children
+        let mut s = sibling.to_usize().unwrap();
+        let mut right_of_sibling = self.rights[s];
+        let mut left_of_sibling = self.lefts[s];
+        if self.get_rb_color(right_of_sibling) == RbColor::Black
+            && self.get_rb_color(left_of_sibling) == RbColor::Black
+        {
+            self.set_rb_color(sibling, RbColor::Red);
+
+            // case-2: red parent -> recolor parent black and we're done
+            if let RbColor::Red = self.get_rb_color(parent) {
+                self.set_rb_color(parent, RbColor::Black);
+                return None;
+            }
+
+            // case-3: black parent -> check parent
+            let grandparent = self.parents[p];
+            let grandparent_dir = if grandparent == self.cap()
+                || self.lefts[grandparent.to_usize().unwrap()] == parent
+            {
+                BstChild::Left
+            } else {
+                BstChild::Right
+            };
+            return Some((grandparent, grandparent_dir));
+        }
+
+        // case-4+5: black sibling with at least 1 red child
+
+        // case-4: outer newphew is black, inner nephew is red (therefore valid node)
+        // -> recolor inner nephew black, sibling red, then rotate sibling in opposite dir,
+        // then fallthrough to perform same coloring and roation as case-5
+        if parent_dir == BstChild::Left && self.get_rb_color(right_of_sibling) == RbColor::Black {
+            self.set_rb_color(left_of_sibling, RbColor::Black);
+            self.set_rb_color(sibling, RbColor::Red);
+            self.right_rotate(sibling);
+            sibling = self.rights[p];
+        } else if parent_dir == BstChild::Right
+            && self.get_rb_color(left_of_sibling) == RbColor::Black
+        {
+            self.set_rb_color(right_of_sibling, RbColor::Black);
+            self.set_rb_color(sibling, RbColor::Red);
+            self.left_rotate(sibling);
+            sibling = self.lefts[p];
+        }
+        s = sibling.to_usize().unwrap();
+        right_of_sibling = self.rights[s];
+        left_of_sibling = self.lefts[s];
+
+        // case-5: outer nephew is red
+        // -> recolor sibling in parent color,
+        // color parent + outer nephew black,
+        // rotate parent in same dir
+        self.set_rb_color(sibling, self.get_rb_color(parent));
+        self.set_rb_color(parent, RbColor::Black);
+        if parent_dir == BstChild::Left {
+            self.set_rb_color(right_of_sibling, RbColor::Black);
+            self.left_rotate(parent);
+        } else {
+            self.set_rb_color(left_of_sibling, RbColor::Black);
+            self.right_rotate(parent);
+        }
+        None
+    }
+
     /// Creates an iterator that iterates through the keys and values of the `ConstLru` from most-recently-used to least-recently-used
     ///
     /// Does not change the LRU order of the elements.
@@ -258,13 +720,15 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             let t = self.tail.to_usize().unwrap();
             let evicted_k = unsafe { self.keys[t].assume_init_read() };
             let evicted_v = unsafe { self.values[t].assume_init_read() };
-            self.remove_from_bst(self.tail);
+
+            self.remove_rb(self.tail);
 
             // recalculate (parent_index, parent_dir) since tail deletion wouldve modified tree
             let (parent_index_recalc, parent_dir_recalc) = self.find_in_bst(&k).err().unwrap();
             self.keys[t].write(k);
             self.values[t].write(v);
-            self.insert_into_bst(self.tail, (parent_index_recalc, parent_dir_recalc));
+
+            self.insert_rb(self.tail, (parent_index_recalc, parent_dir_recalc));
 
             self.move_to_head(self.tail);
             return Some(InsertReplaced::LruEvicted(evicted_k, evicted_v));
@@ -282,7 +746,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         self.keys[f].write(k);
         self.values[f].write(v);
 
-        self.insert_into_bst(self.tail, (parent_index, parent_dir));
+        self.insert_rb(self.tail, (parent_index, parent_dir));
 
         self.move_to_head(self.tail);
         self.len = self.len + I::one();
@@ -319,7 +783,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             self.nexts[t] = index;
         }
 
-        self.remove_from_bst(index);
+        self.remove_rb(index);
         self.len = self.len - I::one();
         Some(val)
     }
@@ -382,131 +846,6 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         }
     }
 
-    /// Inserts the node as the `parent_dir` child of parent
-    /// node can be newly initialized leaf or the root of a subtree
-    /// (parent_index, parent_dir) should be that returned by find_in_bst() or unlink_bst_node_from_parent()
-    ///
-    /// if parent_index == CAP, inserts at root
-    ///
-    /// Does not modify the node's own left + right indices
-    ///
-    /// TODO: red-black
-    fn insert_into_bst(&mut self, node_index: I, (parent_index, parent_dir): (I, BstChild)) {
-        let node_i = node_index.to_usize().unwrap();
-        self.parents[node_i] = parent_index;
-        // base: if parent_index is CAP, replace root
-        if parent_index == self.cap() {
-            self.root = node_index;
-            return;
-        }
-        let parent_i = parent_index.to_usize().unwrap();
-        match parent_dir {
-            BstChild::Left => self.lefts[parent_i] = node_index,
-            BstChild::Right => self.rights[parent_i] = node_index,
-        }
-    }
-
-    /// TODO: red-black
-    fn remove_from_bst(&mut self, node_index: I) {
-        let node_i = node_index.to_usize().unwrap();
-        let parent = self.parents[node_i];
-        let left = self.lefts[node_i];
-        let right = self.rights[node_i];
-        if left == self.cap() && right == self.cap() {
-            // case-1: no children, just clear
-            self.unlink_bst_node_from_parent(node_index);
-            if node_index == self.root {
-                self.root = self.cap();
-            }
-        } else {
-            let (replacement_index, parent_dir) = if left != self.cap() && right != self.cap() {
-                let in_order_successor = self.find_in_order_successor_right_subtree(node_index);
-                let (ios_parent, ios_parent_dir) =
-                    self.unlink_bst_node_from_parent(in_order_successor);
-                // in_order_successor must have no left children,
-                // so replace ios with its right child
-                let ios = in_order_successor.to_usize().unwrap();
-                let ios_right = self.rights[ios];
-                if ios_right != self.cap() {
-                    self.unlink_bst_node_from_parent(ios_right);
-                    self.insert_into_bst(ios_right, (ios_parent, ios_parent_dir));
-                }
-                // at this point ios has no left, right, parent
-                // replace ios' left and right with node's left and right
-                self.lefts[ios] = left;
-                // must compute right again since mightve changed with ios_right modification above
-                self.rights[ios] = self.rights[node_i];
-                let (_, parent_dir) = self.unlink_bst_node_from_parent(node_index);
-                (in_order_successor, parent_dir)
-            } else {
-                // only 1 child, replace node with child
-                let (_, parent_dir) = self.unlink_bst_node_from_parent(node_index);
-                let replacement_index = if left != self.cap() { left } else { right };
-                (replacement_index, parent_dir)
-            };
-            self.insert_into_bst(replacement_index, (parent, parent_dir));
-        }
-
-        // clear the removed node's left, right, parent
-        self.parents[node_i] = self.cap();
-        self.lefts[node_i] = self.cap();
-        self.rights[node_i] = self.cap();
-    }
-
-    /// Assumes node has a non-empty right-subtree
-    /// Returns the node's in-order successor: leftmost child of right subtree
-    /// return value always guaranteed to != CAP
-    fn find_in_order_successor_right_subtree(&self, node_index: I) -> I {
-        let right_subtree_root = self.rights[node_index.to_usize().unwrap()];
-        self.find_leftmost(right_subtree_root)
-    }
-
-    /// Assumes node is a valid node
-    /// Returns itself if no left children
-    fn find_leftmost(&self, node_index: I) -> I {
-        let mut curr = node_index;
-        let mut left = self.lefts[curr.to_usize().unwrap()];
-        while left != self.cap() {
-            curr = left;
-            left = self.lefts[curr.to_usize().unwrap()];
-        }
-        curr
-    }
-
-    /// Assumes node has a valid parent
-    /// Returns CAP if no predecessor ie node is leftmost node
-    fn find_in_order_predecessor_ancestor(&self, node_index: I) -> I {
-        let mut curr = node_index;
-        let mut parent = self.parents[curr.to_usize().unwrap()];
-        while self.rights[parent.to_usize().unwrap()] != curr && parent != self.cap() {
-            curr = parent;
-            parent = self.parents[curr.to_usize().unwrap()];
-        }
-        parent
-    }
-
-    /// set node's parent's left/right link pointing to node to CAP, and
-    /// set node's parent link to CAP
-    /// Returns (parent_kv_i, was_deleted_node_parent's_left_or_right_child)
-    /// parent_kv_i == CAP if node was root
-    fn unlink_bst_node_from_parent(&mut self, node_index: I) -> (I, BstChild) {
-        let node_i = node_index.to_usize().unwrap();
-        let parent = self.parents[node_i];
-        self.parents[node_i] = self.cap();
-        if parent == self.cap() {
-            return (parent, BstChild::Left);
-        }
-        let p = parent.to_usize().unwrap();
-        let parent_dir = if self.lefts[p] == node_index {
-            self.lefts[p] = self.cap();
-            BstChild::Left
-        } else {
-            self.rights[p] = self.cap();
-            BstChild::Right
-        };
-        (parent, parent_dir)
-    }
-
     /// Returns a reference to the value corresponding to the key without updating the entry to most-recently-used slot
     ///
     /// To update to most-recently-used, use [`Self::get`]
@@ -551,6 +890,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
 impl<K: Clone, V: Clone, const CAP: usize, I: PrimInt + Unsigned> Clone for ConstLru<K, V, CAP, I> {
     fn clone(&self) -> Self {
         let mut res = Self {
+            rb_colors: self.rb_colors,
             len: self.len,
             root: self.root,
             head: self.head,
@@ -655,7 +995,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> TryFrom<[(K, V); CAP]>
                 }
                 Err(parent_info) => parent_info,
             };
-            res.insert_into_bst(I::from(i).unwrap(), (parent_index, parent_dir));
+            res.insert_rb(I::from(i).unwrap(), (parent_index, parent_dir));
         }
 
         Ok(res)
@@ -666,4 +1006,10 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> TryFrom<[(K, V); CAP]>
 enum BstChild {
     Left,
     Right,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+enum RbColor {
+    Red,
+    Black,
 }

@@ -4,8 +4,11 @@ use crate::ConstLru;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InOrderTraversalState {
+    /// traversal has completed the left subtree
     Left,
+    /// traversal has completed for self
     This,
+    /// traversal has completed for right subtree
     Right,
 }
 
