@@ -4,7 +4,7 @@ A simple no_std, non-hashing, constant-capacity, constant-memory-usage LRU cache
 
 The data structure is backed by a couple of const-generic arrays, resulting in all required memory being allocated up-front.
 
-**This crate uses unsafe rust**, but all public APIs are safe.
+**This crate uses unsafe rust**
 
 ## Design
 

@@ -81,12 +81,53 @@ pub struct ConstLru<K, V, const CAP: usize, I: PrimInt + Unsigned = usize> {
 }
 
 impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
-    /// Creates a new empty `ConstLru`
+    /// Creates a new empty `ConstLru` on the stack
     ///
     /// panics if
     /// - `CAP > I::MAX`
     /// - `I::MAX > usize::MAX`
+    ///
+    /// WARNING: this might result in runtime stack overflow errors for large CAP.
+    /// Use [`Self::init_at_alloc`] to initialize larger variants at preallocated memory
     pub fn new() -> Self {
+        let mut res: MaybeUninit<Self> = MaybeUninit::uninit();
+        unsafe {
+            Self::init_at_alloc(res.as_mut_ptr());
+            res.assume_init()
+        }
+    }
+
+    /// Initializes the ConstLru at a region of allocated memory
+    ///
+    /// # Safety
+    /// `ptr` must point to uninitialized memory, since init()
+    /// overwrites the data at `ptr`
+    ///
+    /// panics if
+    /// - `CAP > I::MAX`
+    /// - `I::MAX > usize::MAX`
+    ///
+    /// Example:
+    ///
+    /// ```
+    /// use const_lru::ConstLru;
+    /// use std::alloc::{alloc, Layout};
+    ///
+    /// let layout = Layout::new::<ConstLru<u32, u16, 10_000, u16>>();
+    /// let container: Box<ConstLru<u32, u16, 10_000, u16>> = unsafe {
+    ///     let ptr = alloc(layout) as *mut ConstLru<u32, u16, 10_000, u16>;
+    ///     ConstLru::init_at_alloc(ptr);
+    ///     Box::from_raw(ptr)
+    /// };
+    /// ```
+    pub unsafe fn init_at_alloc(ptr: *mut Self) {
+        let mut_ref = &mut *ptr;
+        mut_ref.init();
+    }
+
+    /// Initializes the ConstLru. Doing it as a method instead of
+    /// creating inline avoids running into stack size limits for large CAP
+    fn init(&mut self) {
         let i_max = I::max_value()
             .to_usize()
             .unwrap_or_else(|| panic!("I::MAX > usize::MAX"));
@@ -96,32 +137,29 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
         let cap = I::from(CAP).unwrap();
 
+        self.rb_colors = [RbColor::Black; CAP];
+        self.len = I::zero();
+        self.root = cap;
+        self.head = cap;
+        self.tail = I::zero();
+        self.lefts = [cap; CAP];
+        self.rights = [cap; CAP];
+        self.parents = [cap; CAP];
+
         // [1, 2, ..., cap-1, cap]
-        let mut nexts = [cap; CAP];
-        for (i, next) in nexts.iter_mut().enumerate() {
-            *next = I::from(i + 1).unwrap();
+        for i in 0..CAP {
+            self.nexts[i] = I::from(i + 1).unwrap();
         }
 
         // [cap, 0, 1, ..., cap-2]
-        let mut prevs = [cap; CAP];
-        for (i, prev) in prevs.iter_mut().enumerate().skip(1) {
-            *prev = I::from(i - 1).unwrap();
+        if CAP > 0 {
+            self.prevs[0] = cap;
+            for i in 1..CAP {
+                self.prevs[i] = I::from(i - 1).unwrap();
+            }
         }
 
-        Self {
-            rb_colors: [RbColor::Black; CAP],
-            len: I::zero(),
-            root: cap,
-            head: cap,
-            tail: I::zero(),
-            lefts: [cap; CAP],
-            rights: [cap; CAP],
-            parents: [cap; CAP],
-            nexts,
-            prevs,
-            keys: unsafe { MaybeUninit::uninit().assume_init() },
-            values: unsafe { MaybeUninit::uninit().assume_init() },
-        }
+        // keys and values should remain uninit
     }
 
     /// private helper fn.
