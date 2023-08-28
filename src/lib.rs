@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 #![doc = include_str!("../README.md")]
 
 use core::borrow::Borrow;
@@ -7,6 +7,9 @@ use core::mem::MaybeUninit;
 use num_traits::{PrimInt, Unsigned};
 
 mod iters;
+
+#[cfg(test)]
+mod rbt_tests;
 
 pub use iters::into_iter::IntoIter;
 pub use iters::iter::Iter;
@@ -455,13 +458,13 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// - its only child if only 1 child
     /// - its in-order successor if both children exist
     ///
-    /// Returns ((parent, direction), deleted_node_color)
+    /// Returns ((parent, direction), deleted_node_color, replacement_node_color)
     ///
     /// (parent, direction) is that of the lowest modified parent. This is
     ///
     /// - CAP if node was root
     /// - parent of node if no children or only 1 child and direction of the node wrt parent
-    /// - parent of in order successor if 2 children and direction of in order successor wrt parent
+    /// - parent of in order successor if 2 children and direction of in order successor wrt its parent
     ///
     /// deleted_node_color is
     /// - color of deleted node if 1 or 0 children
@@ -544,7 +547,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     }
 
     fn remove_rb_fixup(&mut self, (parent, parent_dir): (I, BstChild)) -> Option<(I, BstChild)> {
-        // case-0: root -> color root black and done
+        // case: root -> color root black and done
         if parent == self.cap() {
             if self.root != self.cap() {
                 self.set_rb_color(self.root, RbColor::Black);
@@ -560,7 +563,19 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
             self.lefts[p]
         };
 
-        // case-1: red sibling ->
+        // case: replacement is red -> color replacement black, finish
+        let replacement = if parent_dir == BstChild::Left {
+            self.lefts[p]
+        } else {
+            self.rights[p]
+        };
+        if self.get_rb_color(replacement) == RbColor::Red {
+            // red means replacement != CAP
+            self.set_rb_color(replacement, RbColor::Black);
+            return None;
+        }
+
+        // case: red sibling ->
         // recolor sibling and parent then rotate then fallthrough
         if let RbColor::Red = self.get_rb_color(sibling) {
             self.set_rb_color(sibling, RbColor::Black);
@@ -578,7 +593,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
             };
         }
 
-        // case-2+3: black sibling with 2 black children
+        // case: black sibling with 2 black children
         let mut s = sibling.to_usize().unwrap();
         let mut right_of_sibling = self.rights[s];
         let mut left_of_sibling = self.lefts[s];
@@ -587,13 +602,13 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         {
             self.set_rb_color(sibling, RbColor::Red);
 
-            // case-2: red parent -> recolor parent black and we're done
+            // case: red parent -> recolor parent black and we're done
             if let RbColor::Red = self.get_rb_color(parent) {
                 self.set_rb_color(parent, RbColor::Black);
                 return None;
             }
 
-            // case-3: black parent -> check parent
+            // case: black parent -> check parent
             let grandparent = self.parents[p];
             let grandparent_dir = if grandparent == self.cap()
                 || self.lefts[grandparent.to_usize().unwrap()] == parent
@@ -605,9 +620,9 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
             return Some((grandparent, grandparent_dir));
         }
 
-        // case-4+5: black sibling with at least 1 red child
+        // case: black sibling with at least 1 red child
 
-        // case-4: outer newphew is black, inner nephew is red (therefore valid node)
+        // case: outer newphew is black, inner nephew is red (therefore valid node)
         // -> recolor inner nephew black, sibling red, then rotate sibling in opposite dir,
         // then fallthrough to perform same coloring and roation as case-5
         if parent_dir == BstChild::Left && self.get_rb_color(right_of_sibling) == RbColor::Black {
@@ -627,7 +642,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         right_of_sibling = self.rights[s];
         left_of_sibling = self.lefts[s];
 
-        // case-5: outer nephew is red
+        // case: outer nephew is red
         // -> recolor sibling in parent color,
         // color parent + outer nephew black,
         // rotate parent in same dir
