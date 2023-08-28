@@ -172,3 +172,54 @@ fn delete_medium_7() {
     assert_eq!(c.lefts, [10, 10, 0, 10, 10, 2, 10, 10, 6, 10]);
     assert_eq!(c.rights, [1, 10, 3, 10, 10, 8, 7, 10, 9, 10]);
 }
+
+// Delete 8 from tree_a
+#[test]
+fn delete_hard_8() {
+    let mut c = tree_a();
+
+    c.remove_rb(2); // 8
+
+    assert_eq!(c.root, 4);
+    assert_eq!(
+        c.rb_colors,
+        [Black, Red, Black, Black, Black, Black, Red, Red, Black, Red]
+    );
+    assert_eq!(c.parents, [1, 4, 10, 1, 10, 6, 4, 8, 6, 8]);
+    assert_eq!(c.lefts, [10, 0, 10, 10, 1, 10, 5, 10, 7, 10]);
+    assert_eq!(c.rights, [10, 3, 10, 10, 6, 10, 8, 10, 9, 10]);
+}
+
+// Delete 3 from tree_b
+#[test]
+fn delete_hard_9() {
+    let mut c = tree_b();
+
+    c.remove_rb(0); // 3
+
+    assert_eq!(c.root, 5);
+    assert_eq!(
+        c.rb_colors,
+        [Black, Black, Red, Red, Black, Black, Black, Red]
+    );
+    assert_eq!(c.parents, [8, 3, 1, 5, 3, 8, 5, 6]);
+    assert_eq!(c.lefts, [8, 8, 8, 1, 8, 3, 8, 8]);
+    assert_eq!(c.rights, [8, 2, 8, 4, 8, 6, 7, 8]);
+}
+
+// Delete 11 from tree_a
+#[test]
+fn delete_hard_10() {
+    let mut c = tree_a();
+
+    c.remove_rb(3); // 11
+
+    assert_eq!(c.root, 4);
+    assert_eq!(
+        c.rb_colors,
+        [Black, Red, Black, Black, Black, Black, Red, Red, Black, Red]
+    );
+    assert_eq!(c.parents, [1, 4, 1, 10, 10, 6, 4, 8, 6, 8]);
+    assert_eq!(c.lefts, [10, 0, 10, 10, 1, 10, 5, 10, 7, 10]);
+    assert_eq!(c.rights, [10, 2, 10, 10, 6, 10, 8, 10, 9, 10]);
+}
