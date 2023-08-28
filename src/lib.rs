@@ -15,7 +15,7 @@ pub use iters::iter_key_order::IterKeyOrder;
 pub use iters::iter_key_order_mut::IterKeyOrderMut;
 pub use iters::iter_mut::IterMut;
 
-use iters::iter::IterIndexed;
+use iters::iter_key_order::IterIndexed;
 use iters::iter_maybe_uninit::IterMaybeUninit;
 
 /// Constant capacity key-addressed LRU cache.

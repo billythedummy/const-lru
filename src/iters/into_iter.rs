@@ -65,7 +65,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> DoubleEndedIterator for Into
         // when const_lru drops
 
         // index safety: from_tail is < CAP so prevs[i] wont panic
-        // but might = CAP, but in that case len = 0
+        // but might = CAP, but in that case len = 0 so mustve ended
         self.const_lru.tail = self.const_lru.prevs[i];
         self.const_lru.len = self.const_lru.len - I::one();
         Some(self.get_entry(i))
