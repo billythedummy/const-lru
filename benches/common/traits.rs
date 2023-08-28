@@ -6,6 +6,8 @@ use std::{
 use const_lru::ConstLru;
 use num_traits::{PrimInt, Unsigned};
 
+use super::utils::boxed_const_lru;
+
 pub trait Get<K, V> {
     fn get_by_key(&mut self, k: &K) -> Option<&V>;
 }
@@ -88,6 +90,6 @@ impl<K, V, const CAP: usize, I: Unsigned + PrimInt> CreateNew for ConstLru<K, V,
 
 impl<K, V, const CAP: usize, I: Unsigned + PrimInt> CreateNew for Box<ConstLru<K, V, CAP, I>> {
     fn create_new() -> Self {
-        Box::new(ConstLru::new())
+        boxed_const_lru()
     }
 }
