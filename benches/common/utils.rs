@@ -21,8 +21,22 @@ impl From<u8> for BigStruct {
     }
 }
 
+impl From<u16> for BigStruct {
+    fn from(value: u16) -> Self {
+        let mut s: Self = Default::default();
+        s.a3[0] = value.into();
+        s
+    }
+}
+
 pub fn fill_up_all_u8_keys<C: Insert<K, V>, K: From<u8>, V: From<u8>>(container: &mut C) {
     for k in 0..u8::MAX {
+        container.insert_no_ret(k.into(), k.into());
+    }
+}
+
+pub fn fill_up_all_10k_keys<C: Insert<K, V>, K: From<u16>, V: From<u16>>(container: &mut C) {
+    for k in 0..10_000 {
         container.insert_no_ret(k.into(), k.into());
     }
 }

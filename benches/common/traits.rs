@@ -24,6 +24,12 @@ impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Get<K, V> for ConstLru<
     }
 }
 
+impl<K: Ord, V, const CAP: usize, I: Unsigned + PrimInt> Get<K, V> for Box<ConstLru<K, V, CAP, I>> {
+    fn get_by_key(&mut self, k: &K) -> Option<&V> {
+        self.get(k)
+    }
+}
+
 pub trait Insert<K, V> {
     fn insert_no_ret(&mut self, k: K, v: V);
 }
