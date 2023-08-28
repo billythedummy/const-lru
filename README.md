@@ -44,3 +44,13 @@ where `N` is number of elements:
 Most, if not all, general LRU cache implementations (including but not limited to [associative-cache](https://docs.rs/associative-cache), [caches](https://docs.rs/caches), [clru](https://docs.rs/clru), [hashlink](https://docs.rs/hashlink), [lru](https://docs.rs/lru)) rely on one-or-more hashmaps to give `O(1)` op times. While fast, this makes their usage less well-suited for memory-constrained environments like embedded systems since hashmaps may rehash and reallocate more memory any time. `ConstLru` on the other hand is designed to have a fixed size known at compile-time, but gives up a `O(1)` hashing-based lookup for a `O(log N)` binary-search-based lookup and more expensive inserts and removes.
 
 [uluru](https://docs.rs/uluru) is another fixed-capacity LRU-cache implementation that uses less memory but has `O(n)` lookup times.
+
+## Other Design Considerations
+
+The `feat/bst` branch contains a reimplementation using a red-black tree instead of a simple binary-search index. The differences in the microbenchmarks were approx: 
+
+- red-black tree had 2x slower lookup than binary-search index for 10k items
+- red-black tree had 2x slower insertions than binary-search index for 10k items
+- red-black tree had 2x faster deletions than binary-search index for 10k items
+
+Hence decided to continue using the binary-search index.
