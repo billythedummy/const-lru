@@ -509,7 +509,13 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
                 let ios_color = self.get_rb_color(in_order_successor);
                 self.set_rb_color(in_order_successor, original_color);
 
-                lowest_modified_parent = (ios_parent, ios_parent_dir);
+                lowest_modified_parent = if ios_parent == node_index {
+                    // edge: in-order successor is node's right child
+                    // then lowest_modified_parent should be the right child itself
+                    (in_order_successor, BstChild::Right)
+                } else {
+                    (ios_parent, ios_parent_dir)
+                };
                 deleted_color = ios_color;
 
                 (in_order_successor, parent_dir)
