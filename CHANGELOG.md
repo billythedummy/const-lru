@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `init_at_alloc()` fn to allow large `ConstLru`s to be initialized at pre-allocated memory without causing stack overflows.
 
+### Changed
+
+- `IterIndexed` now iterates in key-order instead of lru-order. This should result in slightly faster `.clone()`s
+
 ## [0.1.0] - 2023-08-23
 
 Initial release

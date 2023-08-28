@@ -58,8 +58,4 @@ impl<I: PrimInt + Unsigned, const CAP: usize> DoubleEndedIterCursors<I, CAP> {
     pub fn get_from_head(&self) -> I {
         self.from_head
     }
-
-    pub fn get_from_tail(&self) -> I {
-        self.from_tail
-    }
 }
