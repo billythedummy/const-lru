@@ -4,7 +4,7 @@
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::mem::MaybeUninit;
-use core::ptr;
+use core::ptr::{self, addr_of_mut};
 use num_traits::{PrimInt, Unsigned};
 
 mod iters;
@@ -97,13 +97,9 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// };
     /// ```
     pub unsafe fn init_at_alloc(ptr: *mut Self) {
-        let mut_ref = &mut *ptr;
-        mut_ref.init();
-    }
+        // using as_mut_ptr from MaybeUninit is UB,
+        // initialize fields using addr_of_mut!()
 
-    /// Initializes the ConstLru. Doing it as a method instead of
-    /// creating inline avoids running into stack size limits for large CAP
-    fn init(&mut self) {
         let i_max = I::max_value()
             .to_usize()
             .unwrap_or_else(|| panic!("I::MAX > usize::MAX"));
@@ -113,24 +109,30 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
         let cap = I::from(CAP).unwrap();
 
-        self.len = I::zero();
-        self.head = cap;
-        self.tail = I::zero();
+        addr_of_mut!((*ptr).len).write(I::zero());
+        addr_of_mut!((*ptr).head).write(cap);
+        addr_of_mut!((*ptr).tail).write(I::zero());
 
-        // [1, 2, ..., cap-1, cap]
+        // nexts = [1, 2, ..., cap-1, cap]
         for i in 0..CAP {
-            self.nexts[i] = I::from(i + 1).unwrap();
+            addr_of_mut!((*ptr).nexts[i]).write(I::from(i + 1).unwrap());
         }
 
-        // [cap, 0, 1, ..., cap-2]
+        // prevs = [cap, 0, 1, ..., cap-2]
         if CAP > 0 {
-            self.prevs[0] = cap;
+            addr_of_mut!((*ptr).prevs[0]).write(cap);
             for i in 1..CAP {
-                self.prevs[i] = I::from(i - 1).unwrap();
+                addr_of_mut!((*ptr).prevs[i]).write(I::from(i - 1).unwrap());
             }
         }
 
-        // keys and values should remain uninit
+        for i in 0..CAP {
+            addr_of_mut!((*ptr).keys[i]).write(MaybeUninit::uninit());
+        }
+
+        for i in 0..CAP {
+            addr_of_mut!((*ptr).values[i]).write(MaybeUninit::uninit());
+        }
     }
 
     /// private helper fn.
