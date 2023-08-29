@@ -126,13 +126,12 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
             }
         }
 
+        // initialize bs_index
         for i in 0..CAP {
-            addr_of_mut!((*ptr).keys[i]).write(MaybeUninit::uninit());
+            addr_of_mut!((*ptr).bs_index[i]).write(cap);
         }
 
-        for i in 0..CAP {
-            addr_of_mut!((*ptr).values[i]).write(MaybeUninit::uninit());
-        }
+        // keys and values should remain uninitialized
     }
 
     /// private helper fn.
@@ -306,8 +305,8 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
                 Ordering::Less => {
                     // shift everything between [bs_i, evicted_bs_i) right
                     // then insert at bs_i
-                    let bs_i_ptr: *mut I = &mut self.bs_index[bs_i];
                     unsafe {
+                        let bs_i_ptr = self.bs_index.as_mut_ptr().add(bs_i);
                         ptr::copy(bs_i_ptr, bs_i_ptr.add(1), evicted_bs_i - bs_i);
                     }
                     self.bs_index[bs_i] = self.tail;
@@ -315,9 +314,11 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
                 Ordering::Greater => {
                     // shift everything between (evicted_bs_i, bs_i - 1] left
                     // then insert at bs_i - 1
-                    let evicted_bs_i_ptr: *mut I = &mut self.bs_index[evicted_bs_i];
+
+                    // safety: greater, so bs_i must be > 0
                     let bs_i_sub_1 = bs_i - 1;
                     unsafe {
+                        let evicted_bs_i_ptr = self.bs_index.as_mut_ptr().add(evicted_bs_i);
                         ptr::copy(
                             evicted_bs_i_ptr.add(1),
                             evicted_bs_i_ptr,
@@ -347,8 +348,8 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         let l = self.len.to_usize().unwrap();
         if bs_i < l {
             // shift everything between [bs_i, len) right
-            let bs_i_ptr: *mut I = &mut self.bs_index[bs_i];
             unsafe {
+                let bs_i_ptr = self.bs_index.as_mut_ptr().add(bs_i);
                 ptr::copy(bs_i_ptr, bs_i_ptr.add(1), l - bs_i);
             }
         }
@@ -391,10 +392,10 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         }
 
         let l = self.len().to_usize().unwrap();
-        let bs_ptr: *mut I = &mut self.bs_index[bs_i];
         unsafe {
+            let bs_i_ptr = self.bs_index.as_mut_ptr().add(bs_i);
             // shift everything left to fill bs_i
-            ptr::copy(bs_ptr.add(1), bs_ptr, l - bs_i - 1);
+            ptr::copy(bs_i_ptr.add(1), bs_i_ptr, l - bs_i - 1);
         }
 
         self.len = self.len - I::one();
@@ -433,7 +434,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         K: Borrow<Q>,
     {
         let l = self.len().to_usize().unwrap();
-        let valid_bs_index = self.bs_index.get(0..l).unwrap();
+        let valid_bs_index = &self.bs_index[0..l];
         valid_bs_index
             .binary_search_by(|probe_index| {
                 let p = probe_index.to_usize().unwrap();
