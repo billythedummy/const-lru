@@ -89,9 +89,9 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     /// use const_lru::ConstLru;
     /// use std::alloc::{alloc, Layout};
     ///
-    /// let layout = Layout::new::<ConstLru<u32, u16, 10_000, u16>>();
-    /// let container: Box<ConstLru<u32, u16, 10_000, u16>> = unsafe {
-    ///     let ptr = alloc(layout) as *mut ConstLru<u32, u16, 10_000, u16>;
+    /// let layout = Layout::new::<ConstLru<u32, u16, 1_000, u16>>();
+    /// let container: Box<ConstLru<u32, u16, 1_000, u16>> = unsafe {
+    ///     let ptr = alloc(layout) as *mut ConstLru<u32, u16, 1_000, u16>;
     ///     ConstLru::init_at_alloc(ptr);
     ///     Box::from_raw(ptr)
     /// };
@@ -126,7 +126,8 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
             }
         }
 
-        // initialize bs_index
+        // bs_index = [cap, ..., cap]
+        // UB if not initialized
         for i in 0..CAP {
             addr_of_mut!((*ptr).bs_index[i]).write(cap);
         }
@@ -200,6 +201,18 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         self.head = index;
     }
 
+    /// Cleanup for drop impl
+    /// Drops keys and values.
+    /// Other fields should be all primitive types
+    fn drop_cleanup(&mut self) {
+        for (k, v) in IterMaybeUninit::new(self) {
+            unsafe {
+                k.assume_init_drop();
+                v.assume_init_drop();
+            }
+        }
+    }
+
     /// Creates an iterator that iterates through the keys and values of the `ConstLru` from most-recently-used to least-recently-used
     ///
     /// Does not change the LRU order of the elements.
@@ -238,7 +251,9 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
 
     /// Clears the `ConstLru`, removing all key-value pairs.
     pub fn clear(&mut self) {
-        *self = Self::new();
+        self.drop_cleanup();
+        let ptr_to_self: *mut Self = self;
+        unsafe { Self::init_at_alloc(ptr_to_self) }
     }
 
     /// Returns the maximum number of elements this `ConstLru` can hold
@@ -495,12 +510,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> Default for ConstLru<K, V, C
 
 impl<K, V, const CAP: usize, I: PrimInt + Unsigned> Drop for ConstLru<K, V, CAP, I> {
     fn drop(&mut self) {
-        for (k, v) in IterMaybeUninit::new(self) {
-            unsafe {
-                k.assume_init_drop();
-                v.assume_init_drop();
-            }
-        }
+        self.drop_cleanup();
     }
 }
 
@@ -539,6 +549,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> TryFrom<[(K, V); CAP]>
     type Error = DuplicateKeysError<K>;
 
     fn try_from(entries: [(K, V); CAP]) -> Result<Self, Self::Error> {
+        // entries need to fit on the stack too, so Self::new() shouldn't stack overflow
         let mut res = Self::new();
         res.len = res.cap();
         res.head = I::zero();
