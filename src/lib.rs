@@ -201,8 +201,7 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
         self.head = index;
     }
 
-    /// Cleanup for drop impl
-    /// Drops keys and values.
+    /// Cleanup for drop impl. Drops keys and values.
     /// Other fields should be all primitive types
     fn drop_cleanup(&mut self) {
         for (k, v) in IterMaybeUninit::new(self) {
@@ -482,23 +481,51 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     }
 }
 
+impl<K: Clone, V: Clone, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
+    /// Clones the ConstLru to a region of allocated memory
+    ///
+    /// # Safety
+    /// `dst` must point to uninitialized memory, since this
+    /// overwrites the data at `dst`
+    pub unsafe fn clone_to_alloc(&self, dst: *mut Self) {
+        addr_of_mut!((*dst).len).write(self.len);
+        addr_of_mut!((*dst).head).write(self.head);
+        addr_of_mut!((*dst).tail).write(self.tail);
+
+        // .write(self.nexts) result in stack overflow for large CAP, so use raw memmove
+        ptr::copy(
+            self.nexts.as_ptr(),
+            addr_of_mut!((*dst).nexts) as *mut I,
+            CAP,
+        );
+        ptr::copy(
+            self.prevs.as_ptr(),
+            addr_of_mut!((*dst).prevs) as *mut I,
+            CAP,
+        );
+        ptr::copy(
+            self.bs_index.as_ptr(),
+            addr_of_mut!((*dst).bs_index) as *mut I,
+            CAP,
+        );
+
+        for (index, k, v) in IterIndexed::new(self) {
+            let i = index.to_usize().unwrap();
+            addr_of_mut!((*dst).keys[i]).write(MaybeUninit::new(k.clone()));
+            addr_of_mut!((*dst).values[i]).write(MaybeUninit::new(v.clone()));
+        }
+    }
+}
+
+/// WARNING: this might result in runtime stack overflow errors for large `CAP`.
+/// To clone a large `ConstLru`, use [`ConstLru::clone_to_alloc`]
 impl<K: Clone, V: Clone, const CAP: usize, I: PrimInt + Unsigned> Clone for ConstLru<K, V, CAP, I> {
     fn clone(&self) -> Self {
-        let mut res = Self {
-            len: self.len,
-            head: self.head,
-            tail: self.tail,
-            bs_index: self.bs_index,
-            nexts: self.nexts,
-            prevs: self.prevs,
-            keys: unsafe { MaybeUninit::uninit().assume_init() },
-            values: unsafe { MaybeUninit::uninit().assume_init() },
-        };
-        for (i, k, v) in IterIndexed::new(self) {
-            res.keys[i.to_usize().unwrap()].write(k.clone());
-            res.values[i.to_usize().unwrap()].write(v.clone());
+        let mut res: MaybeUninit<Self> = MaybeUninit::uninit();
+        unsafe {
+            self.clone_to_alloc(res.as_mut_ptr());
+            res.assume_init()
         }
-        res
     }
 }
 
@@ -543,6 +570,8 @@ pub struct DuplicateKeysError<K>(
 /// Assumes `entries` is in MRU -> LRU order.
 ///
 /// Returns error if duplicate keys found.
+///
+/// WARNING: this might result in runtime stack overflow errors for large `CAP`.
 impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> TryFrom<[(K, V); CAP]>
     for ConstLru<K, V, CAP, I>
 {

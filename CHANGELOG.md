@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [UNRELEASED]
 
+### Added
+
+- `clone_to_alloc()` method to allow cloning of large `ConstLru`s without stack overflows
+
 ### Fixed
 
 - `clear()` causing stack overflows for large `ConstLru`s
