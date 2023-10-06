@@ -7,8 +7,10 @@ use core::mem::MaybeUninit;
 use core::ptr::{self, addr_of_mut};
 use num_traits::{PrimInt, Unsigned};
 
+mod errs;
 mod iters;
 
+pub use errs::*;
 pub use iters::into_iter::IntoIter;
 pub use iters::iter::Iter;
 pub use iters::iter_key_order::IterKeyOrder;
@@ -376,7 +378,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     }
 
     /// Removes a key from the `ConstLru`, returning the value at the key if the key was previously in the `ConstLru`.
-    pub fn remove<Q: Ord>(&mut self, k: &Q) -> Option<V>
+    pub fn remove<Q: Ord + ?Sized>(&mut self, k: &Q) -> Option<V>
     where
         K: Borrow<Q>,
     {
@@ -419,7 +421,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     /// Returns a reference to the value corresponding to the key and moves entry to most-recently-used slot.
     ///
     /// To not update to most-recently-used, use [`Self::get_untouched`]
-    pub fn get<Q: Ord>(&mut self, k: &Q) -> Option<&V>
+    pub fn get<Q: Ord + ?Sized>(&mut self, k: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
     {
@@ -431,7 +433,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     /// Returns a mutable reference to the value corresponding to the key and moves entry to most-recently-used slot.
     ///
     /// To not update to most-recently-used, use [`Self::get_mut_untouched`]
-    pub fn get_mut<Q: Ord>(&mut self, k: &Q) -> Option<&mut V>
+    pub fn get_mut<Q: Ord + ?Sized>(&mut self, k: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
     {
@@ -443,7 +445,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     /// Ok(kv_i, bs_index_i)
     ///
     /// Err(bs_index_i)
-    fn get_index_of<Q: Ord>(&self, k: &Q) -> Result<(I, usize), usize>
+    fn get_index_of<Q: Ord + ?Sized>(&self, k: &Q) -> Result<(I, usize), usize>
     where
         K: Borrow<Q>,
     {
@@ -461,7 +463,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     /// Returns a reference to the value corresponding to the key without updating the entry to most-recently-used slot
     ///
     /// To update to most-recently-used, use [`Self::get`]
-    pub fn get_untouched<Q: Ord>(&self, k: &Q) -> Option<&V>
+    pub fn get_untouched<Q: Ord + ?Sized>(&self, k: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
     {
@@ -472,7 +474,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     /// Returns a mutable reference to the value corresponding to the key without updating the entry to most-recently-used slot
     ///
     /// To update to most-recently-used, use [`Self::get_mut`]
-    pub fn get_mut_untouched<Q: Ord>(&mut self, k: &Q) -> Option<&mut V>
+    pub fn get_mut_untouched<Q: Ord + ?Sized>(&mut self, k: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
     {
@@ -557,13 +559,6 @@ pub enum InsertReplaced<K, V> {
     LruEvicted(K, V),
     OldValue(V),
 }
-
-/// Error type of `TryFrom<[(K, V); CAP]>`
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub struct DuplicateKeysError<K>(
-    /// The first duplicate key found
-    pub K,
-);
 
 /// Creates a full ConstLru cache from an `entries` array.
 ///
