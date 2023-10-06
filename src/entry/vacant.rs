@@ -2,6 +2,7 @@ use num_traits::{PrimInt, Unsigned};
 
 use crate::ConstLru;
 
+/// A view into an vacant entry in a ConstLru. It is part of the Entry enum.
 #[derive(Debug)]
 pub struct VacantEntry<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> {
     const_lru: &'a mut ConstLru<K, V, CAP, I>,

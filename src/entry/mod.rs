@@ -8,6 +8,7 @@ pub use vacant::*;
 
 use crate::ConstLru;
 
+/// A view into a single entry in a ConstLru, which may either be vacant or occupied.
 #[derive(Debug)]
 pub enum Entry<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> {
     Occupied(OccupiedEntry<'a, K, V, CAP, I>),
@@ -39,6 +40,7 @@ impl<'a, K, V, const CAP: usize, I: PrimInt + Unsigned> Entry<'a, K, V, CAP, I> 
 
 impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> Entry<'a, K, V, CAP, I> {
     /// Ensures a value is in the entry by inserting the result of the default function if empty, and returns a mutable reference to the value in the entry.
+    ///
     /// Also moves the entry to most-recently-used position if previously existing
     pub fn or_insert_with<F: FnOnce() -> V>(self, default: F) -> &'a mut V {
         match self {
@@ -63,6 +65,7 @@ impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> Entry<'a, K, V, CAP
     }
 
     /// Ensures a value is in the entry by inserting the default if empty, and returns a mutable reference to the value in the entry.
+    ///
     /// Also moves the entry to most-recently-used position if previously existing
     pub fn or_insert(self, default: V) -> &'a mut V {
         match self {
@@ -74,6 +77,7 @@ impl<'a, K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> Entry<'a, K, V, CAP
 
 impl<'a, K: Ord, V: Default, const CAP: usize, I: PrimInt + Unsigned> Entry<'a, K, V, CAP, I> {
     /// Ensures a value is in the entry by inserting the default value if empty, and returns a mutable reference to the value in the entry.
+    ///
     /// Also moves the entry to most-recently-used position if previously existing
     pub fn or_default(self) -> &'a mut V {
         self.or_insert(V::default())
