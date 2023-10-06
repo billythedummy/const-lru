@@ -7,9 +7,11 @@ use core::mem::MaybeUninit;
 use core::ptr::{self, addr_of_mut};
 use num_traits::{PrimInt, Unsigned};
 
+mod entry;
 mod errs;
 mod iters;
 
+pub use entry::*;
 pub use errs::*;
 pub use iters::into_iter::IntoIter;
 pub use iters::iter::Iter;
@@ -276,80 +278,20 @@ impl<K, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
     pub fn len(&self) -> I {
         self.len
     }
-}
 
-impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
-    /// Inserts a key-value pair into the map. The entry is moved to the most-recently-used slot
-    ///
-    /// If `CAP == 0`, `None` is returned.
-    ///
-    /// If the map did not have this key present and is not full, `None` is returned.
-    ///
-    /// If the map did have this key present, the value is updated, and the old value is returned in a [`InsertReplaced::OldValue`].
-    /// The key is not updated, though; this matters for types that can be `==` without being identical.
-    ///
-    /// If the map is full, the least-recently used key-value pair is evicted and returned in a [`InsertReplaced::LruEvicted`].
-    pub fn insert(&mut self, k: K, v: V) -> Option<InsertReplaced<K, V>> {
-        if CAP == 0 {
-            return None;
-        }
+    /// Assumes `index` is of a valid node
+    /// Moves `index` to MRU position
+    fn insert_replace_value(&mut self, index: I, replacement: V) -> V {
+        let old_v = unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() };
+        let old_v_out = core::mem::replace(old_v, replacement);
+        self.move_to_head(index);
+        old_v_out
+    }
 
-        // case-1: existing
-        let bs_i = match self.get_index_of(&k) {
-            Ok((index, _)) => {
-                let old_v = unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() };
-                let old_v_out = core::mem::replace(old_v, v);
-                self.move_to_head(index);
-                return Some(InsertReplaced::OldValue(old_v_out));
-            }
-            Err(i) => i,
-        };
-
-        // case-2: full, evict LRU
-        if self.is_full() {
-            // N > 0, tail must be valid
-            let t = self.tail.to_usize().unwrap();
-            let evicted_k = unsafe { self.keys[t].assume_init_read() };
-            let evicted_v = unsafe { self.values[t].assume_init_read() };
-            let (_should_be_t, evicted_bs_i) = self.get_index_of(&evicted_k).unwrap();
-            self.keys[t].write(k);
-            self.values[t].write(v);
-
-            match bs_i.cmp(&evicted_bs_i) {
-                // nothing to be done, bs_index[bs_i] already == tail
-                Ordering::Equal => (),
-                Ordering::Less => {
-                    // shift everything between [bs_i, evicted_bs_i) right
-                    // then insert at bs_i
-                    unsafe {
-                        let bs_i_ptr = self.bs_index.as_mut_ptr().add(bs_i);
-                        ptr::copy(bs_i_ptr, bs_i_ptr.add(1), evicted_bs_i - bs_i);
-                    }
-                    self.bs_index[bs_i] = self.tail;
-                }
-                Ordering::Greater => {
-                    // shift everything between (evicted_bs_i, bs_i - 1] left
-                    // then insert at bs_i - 1
-
-                    // safety: greater, so bs_i must be > 0
-                    let bs_i_sub_1 = bs_i - 1;
-                    unsafe {
-                        let evicted_bs_i_ptr = self.bs_index.as_mut_ptr().add(evicted_bs_i);
-                        ptr::copy(
-                            evicted_bs_i_ptr.add(1),
-                            evicted_bs_i_ptr,
-                            bs_i_sub_1 - evicted_bs_i,
-                        );
-                    }
-                    self.bs_index[bs_i_sub_1] = self.tail;
-                }
-            }
-
-            self.move_to_head(self.tail);
-            return Some(InsertReplaced::LruEvicted(evicted_k, evicted_v));
-        }
-
-        // case-3: alloc new node
+    // Assumes N > 0 and self is not full
+    // Moves newly inserted elem to MRU position
+    // Returns index entry was inserted into
+    fn insert_alloc_new(&mut self, insert_bs_i: I, k: K, v: V) -> I {
         let free_index = if self.is_empty() {
             self.head = self.tail;
             self.tail
@@ -361,33 +303,33 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         self.keys[f].write(k);
         self.values[f].write(v);
 
-        let l = self.len.to_usize().unwrap();
-        if bs_i < l {
+        if insert_bs_i < self.len {
             // shift everything between [bs_i, len) right
             unsafe {
-                let bs_i_ptr = self.bs_index.as_mut_ptr().add(bs_i);
-                ptr::copy(bs_i_ptr, bs_i_ptr.add(1), l - bs_i);
+                let insert_bs_i_ptr = self
+                    .bs_index
+                    .as_mut_ptr()
+                    .add(insert_bs_i.to_usize().unwrap());
+                ptr::copy(
+                    insert_bs_i_ptr,
+                    insert_bs_i_ptr.add(1),
+                    (self.len - insert_bs_i).to_usize().unwrap(),
+                );
             }
         }
-        self.bs_index[bs_i] = free_index;
+        self.bs_index[insert_bs_i.to_usize().unwrap()] = free_index;
 
         self.len = self.len + I::one();
 
         self.move_to_head(self.tail);
-        None
+        free_index
     }
 
-    /// Removes a key from the `ConstLru`, returning the value at the key if the key was previously in the `ConstLru`.
-    pub fn remove<Q: Ord + ?Sized>(&mut self, k: &Q) -> Option<V>
-    where
-        K: Borrow<Q>,
-    {
-        let (index, bs_i) = self.get_index_of(k).ok()?;
+    // Assumes index tuple is of a valid node. Should be result of Ok returned by self.get_index_of()
+    fn remove_by_index(&mut self, (index, bs_i): (I, I)) -> (K, V) {
         let i = index.to_usize().unwrap();
 
-        unsafe {
-            self.keys[i].assume_init_drop();
-        }
+        let key = unsafe { self.keys[i].assume_init_read() };
         let val = unsafe { self.values[i].assume_init_read() };
 
         // if len == 1, correct links are already in place
@@ -407,15 +349,126 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
             self.nexts[t] = index;
         }
 
-        let l = self.len().to_usize().unwrap();
         unsafe {
-            let bs_i_ptr = self.bs_index.as_mut_ptr().add(bs_i);
+            let bs_i_ptr = self.bs_index.as_mut_ptr().add(bs_i.to_usize().unwrap());
             // shift everything left to fill bs_i
-            ptr::copy(bs_i_ptr.add(1), bs_i_ptr, l - bs_i - 1);
+            ptr::copy(
+                bs_i_ptr.add(1),
+                bs_i_ptr,
+                (self.len - bs_i - I::one()).to_usize().unwrap(),
+            );
         }
 
         self.len = self.len - I::one();
-        Some(val)
+        (key, val)
+    }
+
+    /// Assumes index is valid
+    fn get_by_index(&self, index: I) -> &V {
+        unsafe { self.values[index.to_usize().unwrap()].assume_init_ref() }
+    }
+
+    /// Assumes index is valid
+    fn get_mut_by_index(&mut self, index: I) -> &mut V {
+        unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() }
+    }
+}
+
+impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> {
+    /// Inserts a key-value pair into the map. The entry is moved to the most-recently-used slot
+    ///
+    /// If `CAP == 0`, `None` is returned.
+    ///
+    /// If the map did not have this key present and is not full, `None` is returned.
+    ///
+    /// If the map did have this key present, the value is updated, and the old value is returned in a [`InsertReplaced::OldValue`].
+    /// The key is not updated, though; this matters for types that can be `==` without being identical.
+    ///
+    /// If the map is full, the least-recently used key-value pair is evicted and returned in a [`InsertReplaced::LruEvicted`].
+    pub fn insert(&mut self, k: K, v: V) -> Option<InsertReplaced<K, V>> {
+        if CAP == 0 {
+            return None;
+        }
+        let insert_bs_i = match self.get_index_of(&k) {
+            Ok((existing_index, _)) => {
+                return Some(InsertReplaced::OldValue(
+                    self.insert_replace_value(existing_index, v),
+                ))
+            }
+            Err(i) => i,
+        };
+        if self.is_full() {
+            let (_, (old_k, old_v)) = self.insert_evict_lru(insert_bs_i, k, v);
+            Some(InsertReplaced::LruEvicted(old_k, old_v))
+        } else {
+            self.insert_alloc_new(insert_bs_i, k, v);
+            None
+        }
+    }
+
+    /// Assumes N > 0 and self is full
+    /// Moves newly inserted elem to MRU position
+    ///
+    /// Returns (index entry was inserted into, evicted entry)
+    fn insert_evict_lru(&mut self, insert_bs_i: I, k: K, v: V) -> (I, (K, V)) {
+        // N > 0, tail must be valid
+        let i = self.tail;
+        let t = i.to_usize().unwrap();
+        let evicted_k = unsafe { self.keys[t].assume_init_read() };
+        let evicted_v = unsafe { self.values[t].assume_init_read() };
+        let Ok((_should_be_t, evicted_bs_i)) = self.get_index_of(&evicted_k) else { unreachable!() };
+        self.keys[t].write(k);
+        self.values[t].write(v);
+
+        match insert_bs_i.cmp(&evicted_bs_i) {
+            // nothing to be done, bs_index[insert_bs_i] already == tail
+            Ordering::Equal => (),
+            Ordering::Less => {
+                // shift everything between [insert_bs_i, evicted_bs_i) right
+                // then insert at insert_bs_i
+                let b = insert_bs_i.to_usize().unwrap();
+                unsafe {
+                    let bs_i_ptr = self.bs_index.as_mut_ptr().add(b);
+                    ptr::copy(
+                        bs_i_ptr,
+                        bs_i_ptr.add(1),
+                        (evicted_bs_i - insert_bs_i).to_usize().unwrap(),
+                    );
+                }
+                self.bs_index[b] = self.tail;
+            }
+            Ordering::Greater => {
+                // shift everything between (evicted_bs_i, bs_i - 1] left
+                // then insert at bs_i - 1
+
+                // safety: greater, so bs_i must be > 0
+                let inser_bs_i_sub_1 = insert_bs_i - I::one();
+                unsafe {
+                    let evicted_bs_i_ptr = self
+                        .bs_index
+                        .as_mut_ptr()
+                        .add(evicted_bs_i.to_usize().unwrap());
+                    ptr::copy(
+                        evicted_bs_i_ptr.add(1),
+                        evicted_bs_i_ptr,
+                        (inser_bs_i_sub_1 - evicted_bs_i).to_usize().unwrap(),
+                    );
+                }
+                self.bs_index[inser_bs_i_sub_1.to_usize().unwrap()] = self.tail;
+            }
+        }
+
+        self.move_to_head(self.tail);
+        (i, (evicted_k, evicted_v))
+    }
+
+    /// Removes a key from the `ConstLru`, returning the value at the key if the key was previously in the `ConstLru`.
+    pub fn remove<Q: Ord + ?Sized>(&mut self, k: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+    {
+        let tup = self.get_index_of(k).ok()?;
+        Some(self.remove_by_index(tup).1)
     }
 
     /// Returns a reference to the value corresponding to the key and moves entry to most-recently-used slot.
@@ -427,7 +480,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     {
         let (index, _) = self.get_index_of(k).ok()?;
         self.move_to_head(index);
-        Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_ref() })
+        Some(self.get_by_index(index))
     }
 
     /// Returns a mutable reference to the value corresponding to the key and moves entry to most-recently-used slot.
@@ -439,13 +492,13 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
     {
         let (index, _) = self.get_index_of(k).ok()?;
         self.move_to_head(index);
-        Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() })
+        Some(self.get_mut_by_index(index))
     }
 
     /// Ok(kv_i, bs_index_i)
     ///
     /// Err(bs_index_i)
-    fn get_index_of<Q: Ord + ?Sized>(&self, k: &Q) -> Result<(I, usize), usize>
+    fn get_index_of<Q: Ord + ?Sized>(&self, k: &Q) -> Result<(I, I), I>
     where
         K: Borrow<Q>,
     {
@@ -457,7 +510,8 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
                 let probe = unsafe { self.keys[p].assume_init_ref() };
                 probe.borrow().cmp(k)
             })
-            .map(|bs_i| (self.bs_index[bs_i], bs_i))
+            .map(|bs_i| (self.bs_index[bs_i], I::from(bs_i).unwrap()))
+            .map_err(|new_bsi| I::from(new_bsi).unwrap())
     }
 
     /// Returns a reference to the value corresponding to the key without updating the entry to most-recently-used slot
@@ -468,7 +522,7 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         K: Borrow<Q>,
     {
         let (index, _) = self.get_index_of(k).ok()?;
-        Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_ref() })
+        Some(self.get_by_index(index))
     }
 
     /// Returns a mutable reference to the value corresponding to the key without updating the entry to most-recently-used slot
@@ -479,7 +533,14 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         K: Borrow<Q>,
     {
         let (index, _) = self.get_index_of(k).ok()?;
-        Some(unsafe { self.values[index.to_usize().unwrap()].assume_init_mut() })
+        Some(self.get_mut_by_index(index))
+    }
+
+    /// Gets the given key’s corresponding entry in the map for in-place manipulation.
+    ///
+    /// **panics** if CAP == 0
+    pub fn entry(&mut self, k: K) -> Entry<'_, K, V, CAP, I> {
+        Entry::new(self, k)
     }
 }
 

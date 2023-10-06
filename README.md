@@ -4,13 +4,11 @@ A simple no_std, non-hashing, constant-capacity, constant-memory-usage LRU cache
 
 The data structure is backed by a couple of const-generic arrays, resulting in all required memory being allocated up-front.
 
-**This crate uses unsafe rust**
-
 ## Design
 
 The LRU cache struct is laid out in a struct-of-arrays format: all keys are in 1 array, all values are in another array.
 
-A sorted index over the keys is also stored in the struct to allow for `O(log N)` lookup times using binary search. 
+A sorted index over the keys is also stored in the struct to allow for `O(log N)` lookup times using binary search.
 
 LRU-ordering is implemented using a doubly-linked list, but with array indices instead of pointers. Following the struct-of-arrays format, all the next-link array indices are in one array while all the prev-link array indices are in another array.
 
@@ -30,6 +28,7 @@ assert_eq!(mem::size_of::<ConstLru<u8, u8, 255, u8>>(), 1278);
 ## Time complexity
 
 where `N` is number of elements:
+
 - Retrieval: `O(log N)` lookup using the sorted index
 - Insertion: `O(log N)` lookup using the sorted index + `O(N)` to modify the sorted index (bitwise-copy of index types similar to `Vec`)
 - Deletion: `O(log N)` lookup using the sorted index + `O(N)` to modify the sorted index (bitwise-copy of index types similar to `Vec`)
@@ -41,16 +40,8 @@ where `N` is number of elements:
 
 ## Motivation
 
-Most, if not all, general LRU cache implementations (including but not limited to [associative-cache](https://docs.rs/associative-cache), [caches](https://docs.rs/caches), [clru](https://docs.rs/clru), [hashlink](https://docs.rs/hashlink), [lru](https://docs.rs/lru)) rely on one-or-more hashmaps to give `O(1)` op times. While fast, this makes their usage less well-suited for memory-constrained environments like embedded systems since hashmaps may rehash and reallocate more memory any time. `ConstLru` on the other hand is designed to have a fixed size known at compile-time, but gives up a `O(1)` hashing-based lookup for a `O(log N)` binary-search-based lookup and more expensive inserts and removes.
+Most, if not all, general LRU cache implementations (including but not limited to [associative-cache](https://docs.rs/associative-cache), [caches](https://docs.rs/caches), [clru](https://docs.rs/clru), [hashlink](https://docs.rs/hashlink), [lru](https://docs.rs/lru)) rely on one-or-more hashmaps to give `O(1)` op times. While fast, this makes their usage less well-suited for memory-constrained environments like embedded systems since hashmaps may rehash and reallocate more memory.
+
+[`ConstLru`](crate::ConstLru) on the other hand is designed to have a fixed size known at compile-time, but gives up a `O(1)` hashing-based lookup for a `O(log N)` binary-search-based lookup and `O(N)` inserts and removes.
 
 [uluru](https://docs.rs/uluru) is another fixed-capacity LRU-cache implementation that uses less memory but has `O(n)` lookup times.
-
-## Other Design Considerations
-
-The `feat/bst` branch contains a reimplementation using a red-black tree instead of a simple binary-search index. The differences in the microbenchmarks were approx: 
-
-- red-black tree had 2x slower lookup than binary-search index for 10k items
-- red-black tree had 2x slower insertions than binary-search index for 10k items
-- red-black tree had 2x faster deletions than binary-search index for 10k items
-
-Hence decided to continue using the binary-search index.
