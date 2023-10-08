@@ -1,5 +1,6 @@
 use const_lru::{ConstLru, InsertReplaced};
 
+#[allow(clippy::len_zero)]
 #[test]
 fn one_cap_simple() {
     const ENTRY: (u8, u64) = (1, 2);

@@ -18,7 +18,7 @@ fn bench_insert<C: Insert<K, V> + CreateNew, K: From<u8>, V: From<u8>>(
         bencher.iter_batched(
             || C::create_new(),
             |mut container| {
-                for k in u8::MAX..0 {
+                for k in (0..u8::MAX).rev() {
                     container.insert_no_ret(k.into(), k.into());
                 }
             },
@@ -37,7 +37,7 @@ fn bench_ten_k_insert<C: Insert<K, V> + CreateNew, K: From<u16>, V: From<u16>>(
         bencher.iter_batched(
             || C::create_new(),
             |mut container| {
-                for k in 9_999..0 {
+                for k in (0..9_999).rev() {
                     container.insert_no_ret(k.into(), k.into());
                 }
             },

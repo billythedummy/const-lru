@@ -1,5 +1,6 @@
 use const_lru::ConstLru;
 
+#[allow(clippy::len_zero)]
 #[test]
 fn zero_cap_insert_get_remove() {
     const ENTRY: (u8, u64) = (1, 2);

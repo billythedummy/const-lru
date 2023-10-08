@@ -1,0 +1,41 @@
+name: Rust
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: stable
+          components: clippy,rustfmt
+      - name: Build
+        run: cargo build
+      - name: Run tests
+        run: cargo test
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D clippy::all
+      - name: Check code formatting
+        run: cargo fmt --all -- --check
+
+  miri-test:
+    name: Test with miri
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: nightly
+          components: miri
+      - run: cargo miri test
