@@ -16,7 +16,9 @@ fn vacant_insert_alloc() {
     c.insert(1, 1);
     assert!(c.get(&k).is_none());
 
-    let Entry::Vacant(entry) = c.entry(k) else { panic!("not vacant") };
+    let Entry::Vacant(entry) = c.entry(k) else {
+        panic!("not vacant")
+    };
     let (m, opt) = entry.insert(v);
 
     assert_eq!(*m, v);
@@ -36,7 +38,9 @@ fn vacant_insert_evict_1() {
     c.insert(evicted_k, evicted_v);
     assert!(c.get(&k).is_none());
 
-    let Entry::Vacant(entry) = c.entry(k) else { panic!("not vacant") };
+    let Entry::Vacant(entry) = c.entry(k) else {
+        panic!("not vacant")
+    };
     let (m, opt) = entry.insert(v);
 
     assert_eq!(*m, v);
@@ -59,7 +63,9 @@ fn vacant_insert_evict_3() {
     c.insert(3, 3);
     assert!(c.get(&k).is_none());
 
-    let Entry::Vacant(entry) = c.entry(k) else { panic!("not vacant") };
+    let Entry::Vacant(entry) = c.entry(k) else {
+        panic!("not vacant")
+    };
     let (m, opt) = entry.insert(v);
 
     assert_eq!(*m, v);
@@ -77,7 +83,9 @@ fn occupied_get() {
     let mut c: ConstLru<u8, u8, 3, u8> = ConstLru::new();
     c.insert(k, v);
 
-    let Entry::Occupied(mut entry) = c.entry(k) else { panic!("not occupied") };
+    let Entry::Occupied(mut entry) = c.entry(k) else {
+        panic!("not occupied")
+    };
 
     assert_eq!(*entry.get(), v);
     assert_eq!(*entry.get_mut(), v);
@@ -104,7 +112,9 @@ fn occupied_insert() {
     c.insert(k, v);
     c.insert(3, 4);
 
-    let Entry::Occupied(mut entry) = c.entry(k) else { panic!("not occupied") };
+    let Entry::Occupied(mut entry) = c.entry(k) else {
+        panic!("not occupied")
+    };
 
     assert_eq!(entry.insert(new_v), v);
     assert_eq!(*c.get(&k).unwrap(), new_v);
@@ -119,7 +129,9 @@ fn occupied_remove() {
     c.insert(k, v);
     c.insert(3, 4);
 
-    let Entry::Occupied(entry) = c.entry(k) else { panic!("not occupied") };
+    let Entry::Occupied(entry) = c.entry(k) else {
+        panic!("not occupied")
+    };
 
     assert_eq!(entry.remove(), v);
     assert!(c.get(&k).is_none());

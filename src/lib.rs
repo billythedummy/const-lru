@@ -416,7 +416,9 @@ impl<K: Ord, V, const CAP: usize, I: PrimInt + Unsigned> ConstLru<K, V, CAP, I> 
         let t = i.to_usize().unwrap();
         let evicted_k = unsafe { self.keys[t].assume_init_read() };
         let evicted_v = unsafe { self.values[t].assume_init_read() };
-        let Ok((_should_be_t, evicted_bs_i)) = self.get_index_of(&evicted_k) else { unreachable!() };
+        let Ok((_should_be_t, evicted_bs_i)) = self.get_index_of(&evicted_k) else {
+            unreachable!()
+        };
         self.keys[t].write(k);
         self.values[t].write(v);
 

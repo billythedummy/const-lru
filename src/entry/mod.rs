@@ -79,6 +79,7 @@ impl<'a, K: Ord, V: Default, const CAP: usize, I: PrimInt + Unsigned> Entry<'a, 
     /// Ensures a value is in the entry by inserting the default value if empty, and returns a mutable reference to the value in the entry.
     ///
     /// Also moves the entry to most-recently-used position if previously existing
+    #[allow(clippy::unwrap_or_default)] // TODO: clippy bug? Suggests I use self.or_default() instead but i'm implementing self.or_default() here...
     pub fn or_default(self) -> &'a mut V {
         self.or_insert(V::default())
     }

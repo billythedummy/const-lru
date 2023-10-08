@@ -19,6 +19,12 @@ jobs:
         with:
           rust-version: stable
           components: clippy,rustfmt
+      - name: Print versions
+        run: |
+          cargo --version
+          rustc --version
+          clippy-driver --version
+          rustfmt --version
       - name: Build
         run: cargo build
       - name: Run tests
